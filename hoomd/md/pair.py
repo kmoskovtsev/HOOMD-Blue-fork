@@ -1215,6 +1215,240 @@ class table(force._force):
         self.pair_coeff.set(a, b, func=_table_eval, rmin=rmin_table, rmax=rmax_table, coeff=dict(V=V_table, F=F_table, width=self.width))
         hoomd.util.unquiet_status();
 
+
+class table2D(force._force):
+    R""" Tabulated pair potential.
+
+    Args:
+        width (int): Number of points in x direction to use to interpolate V and F.
+        height (int): number of points to interpolate in y direction
+        name (str): Name of the force instance
+
+    :py:class:`table2D` specifies that a tabulated pair potential should be applied between every
+    particle pair in the simulation.
+
+
+
+    :math:`F_{\mathrm{user}}(r)` and :math:`V_{\mathrm{user}}(r)` are evaluated on width*height grid points
+    covering a quarter of the unit cell 0 < x < L/2, 0 < y < L/2. Values are interpolated bilinearly between grid points.
+    For correctness, you must specify the force defined by: :math:`F = -\frac{\partial V}{\partial r}`.
+
+    The following coefficients must be set per unique pair of particle types:
+
+    - :math:`V_{\mathrm{user}}(r)` and :math:`F_{\mathrm{user}}(r)` - evaluated by ``func`` (see example)
+    - coefficients passed to ``func`` - *coeff* (see example)
+
+
+    .. rubric:: Set a table from a file
+
+    One must provide the table in a file. This module knows nothing about the actual dimension of the
+    simulation box. It's user's responsibility to pre-calculate V and F values at correct grid points,
+    with first point i=0, j=0 at (h1/2, h2/2), and arbitrary point i,j at ((i + 1/2)h1, (j + 1/2)h2). The last 
+    point has coordinates ((width - 1/2)*h1, (height - 1/2)h2).
+    :py:class:`table` can use the given values directly. You must first specify the number of rows
+    in your tables when initializing pair.table. Then use :py:meth:`set_from_file()` to read the file::
+
+        table = pair.table(width=1000, height=500)
+        table.set_from_file(filename='table.dat')
+
+    The file should have width*height (uncommented) lines and 5 columns:
+    rx  ry  V Fx Fy
+    The order in which the points appear is fixed. It should start with point (i=0, j=0), listing the first
+    row of mesh points with j = 0 (ry = h2/2) and i going from 0 to (width - 1), then proceeding to the row 
+    with j = 1, etc.
+
+    """
+    def __init__(self, width, height, Lx_div2, Ly_div2, name=None):
+        hoomd.util.print_status_line();
+
+        # initialize the base class
+        force._force.__init__(self, name);
+
+        # setup the coefficent matrix
+        self.pair_coeff = coeff();
+
+
+        # create the c++ mirror class
+        #if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_force = _md.TablePotential2D(hoomd.context.current.system_definition, int(width), int(height), self.name);
+        #else:
+        #    self.nlist.cpp_nlist.setStorageMode(_md.NeighborList.storageMode.full);
+        #    self.cpp_force = _md.TablePotentialGPU(hoomd.context.current.system_definition, self.nlist.cpp_nlist, int(width), self.name);
+
+        hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
+
+        # stash the width for later use
+        self.width = width;
+        self.height = height;
+        self.Lx_div2 = Lx_div2;
+        self.Ly_div2 = Ly_div2;
+
+
+    def update_pair_table(self, typei, typej, func, Lx_div2, Ly_div2, coeff):
+        # allocate arrays to store V and F
+        Vtable = _hoomd.std_vector_scalar();
+        Fxtable = _hoomd.std_vector_scalar();
+        Fytable = _hoomd.std_vector_scalar();
+
+        # calculate h1 and h2
+        h1 = Lx_div2 / float(self.width);
+        h2 = Ly_div2 / float(self.height);
+
+        # evaluate each point of the function
+        for i in range(0, self.width):
+            for j in range(0, self.height):
+                rx = (0.5 + i)*h1;
+                ry = (0.5 + j)*h2;
+                (V,Fx,Fy) = func(rx, ry, **coeff);
+
+                # fill out the tables
+                Vtable.append(V);
+                Fxtable.append(Fx);
+                Fytable.append(Fy);
+
+        # pass the tables on to the underlying cpp compute
+        self.cpp_force.setTable(Vtable, Fxtable, Fytable);
+
+    ## \internal
+    # \brief Get the r_cut pair dictionary
+    # \returns rcut(i,j) dict if logging is on, and None otherwise
+    def get_rcut(self):
+        if not self.log:
+            return None
+
+        # go through the list of only the active particle types in the sim
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # update the rcut by pair type
+        r_cut_dict = nl.rcut();
+        for i in range(0,ntypes):
+            for j in range(i,ntypes):
+                # get the r_cut value
+                rmax = self.pair_coeff.get(type_list[i], type_list[j], 'rmax');
+                r_cut_dict.set_pair(type_list[i],type_list[j], rmax);
+
+        return r_cut_dict;
+
+    def get_max_rcut(self):
+        # loop only over current particle types
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # find the maximum rmax to update the neighbor list with
+        maxrmax = 0.0;
+
+        # loop through all of the unique type pairs and find the maximum rmax
+        for i in range(0,ntypes):
+            for j in range(i,ntypes):
+                rmax = self.pair_coeff.get(type_list[i], type_list[j], "rmax");
+                maxrmax = max(maxrmax, rmax);
+
+        return maxrmax;
+
+    def update_coeffs(self):
+        # check that the pair coefficents are valid
+        if not self.pair_coeff.verify(["func", "rmin", "rmax", "coeff"]):
+            hoomd.context.msg.error("Not all pair coefficients are set for pair.table\n");
+            raise RuntimeError("Error updating pair coefficients");
+
+        # set all the params
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # loop through all of the unique type pairs and evaluate the table
+        for i in range(0,ntypes):
+            for j in range(i,ntypes):
+                func = self.pair_coeff.get(type_list[i], type_list[j], "func");
+                rmin = self.pair_coeff.get(type_list[i], type_list[j], "rmin");
+                rmax = self.pair_coeff.get(type_list[i], type_list[j], "rmax");
+                coeff = self.pair_coeff.get(type_list[i], type_list[j], "coeff");
+
+                self.update_pair_table(i, j, func, rmin, rmax, coeff);
+
+    def set_from_file(self, a, b, filename):
+        R""" Set a pair interaction from a file.
+
+        Args:
+            a (str): Name of type A in pair
+            b (str): Name of type B in pair
+            filename (str): Name of the file to read
+
+        The provided file specifies V and F at equally spaced r values.
+
+        Example::
+
+            #r  V    F
+            1.0 2.0 -3.0
+            1.1 3.0 -4.0
+            1.2 2.0 -3.0
+            1.3 1.0 -2.0
+            1.4 0.0 -1.0
+            1.5 -1.0 0.0
+
+        The first r value sets *rmin*, the last sets *rmax*. Any line with # as the first non-whitespace character is
+        is treated as a comment. The *r* values must monotonically increase and be equally spaced. The table is read
+        directly into the grid points used to evaluate :math:`F_{\mathrm{user}}(r)` and :math:`_{\mathrm{user}}(r)`.
+        """
+        hoomd.util.print_status_line();
+
+        # open the file
+        f = open(filename);
+
+        r_table = [];
+        V_table = [];
+        F_table = [];
+
+        # read in lines from the file
+        for line in f.readlines():
+            line = line.strip();
+
+            # skip comment lines
+            if line[0] == '#':
+                continue;
+
+            # split out the columns
+            cols = line.split();
+            values = [float(f) for f in cols];
+
+            # validate the input
+            if len(values) != 3:
+                hoomd.context.msg.error("pair.table: file must have exactly 3 columns\n");
+                raise RuntimeError("Error reading table file");
+
+            # append to the tables
+            r_table.append(values[0]);
+            V_table.append(values[1]);
+            F_table.append(values[2]);
+
+        # validate input
+        if self.width != len(r_table):
+            hoomd.context.msg.error("pair.table: file must have exactly " + str(self.width) + " rows\n");
+            raise RuntimeError("Error reading table file");
+
+        # extract rmin and rmax
+        rmin_table = r_table[0];
+        rmax_table = r_table[-1];
+
+        # check for even spacing
+        dr = (rmax_table - rmin_table) / float(self.width-1);
+        for i in range(0,self.width):
+            r = rmin_table + dr * i;
+            if math.fabs(r - r_table[i]) > 1e-3:
+                hoomd.context.msg.error("pair.table: r must be monotonically increasing and evenly spaced\n");
+                raise RuntimeError("Error reading table file");
+
+        hoomd.util.quiet_status();
+        self.pair_coeff.set(a, b, func=_table_eval, rmin=rmin_table, rmax=rmax_table, coeff=dict(V=V_table, F=F_table, width=self.width))
+        hoomd.util.unquiet_status();
+
+
 class morse(pair):
     R""" Morse pair potential.
 

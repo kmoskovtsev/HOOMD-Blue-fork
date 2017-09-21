@@ -43,6 +43,7 @@
 #include "TableAngleForceCompute.h"
 #include "TableDihedralForceCompute.h"
 #include "TablePotential.h"
+#include "TablePotential2D.h"
 #include "TempRescaleUpdater.h"
 #include "TwoStepBD.h"
 #include "TwoStepBerendsen.h"
@@ -203,6 +204,7 @@ PYBIND11_PLUGIN(_md)
     export_TableDihedralForceCompute(m);
     export_HarmonicImproperForceCompute(m);
     export_TablePotential(m);
+    export_TablePotential2D(m);
     export_BondTablePotential(m);
     export_PotentialPair<PotentialPairLJ>(m, "PotentialPairLJ");
     export_PotentialPair<PotentialPairGauss>(m, "PotentialPairGauss");
