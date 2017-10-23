@@ -45,6 +45,8 @@ __device__ inline unsigned int texFetchUint(const unsigned int *ptr, texture<uns
 typedef texture<Scalar, 1, cudaReadModeElementType> scalar_tex_t;
 typedef texture<Scalar2, 1, cudaReadModeElementType> scalar2_tex_t;
 typedef texture<Scalar4, 1, cudaReadModeElementType> scalar4_tex_t;
+typedef texture<Scalar3, 2, cudaReadModeElementType> scalar3_tex2_t;
+
 
 //! Fetch a Scalar value from texture memory.
 /*! This function should be called whenever a CUDA kernel wants to retrieve a
@@ -97,6 +99,28 @@ __device__ inline Scalar4 texFetchScalar4(const Scalar4 *ptr, texture<Scalar4, 1
     #endif
     }
 
+//! Fetch a Scalar3 value from 2D texture memory.
+/*! This function should be called whenever a CUDA kernel wants to retrieve a
+    Scalar3 value from 2D texture memory.
+
+    \param ptr Pointer to bound memory
+    \param tex_ref Texture in which the desired values are stored.
+    \param ii i-Index at which to look.
+    \param jj j-index at which to look.
+*/
+__device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1> tex_ref, )
+        unsigned int ii)
+    {
+    #if __CUDA_ARCH__ >= 350
+    return __ldg(ptr+ii);
+    #else
+    throw std::runtime_error("CUDA Compute below 3.5 is not supported");
+    //return tex2D(tex_ref, ii, jj);
+    #endif
+    }
+
+
+// Double precision block:
 #else
 typedef texture<int2, 1, cudaReadModeElementType> scalar_tex_t;
 typedef texture<int4, 1, cudaReadModeElementType> scalar2_tex_t;
@@ -161,7 +185,41 @@ __device__ inline Scalar4 texFetchScalar4(const Scalar4 *ptr, texture<int4, 1> t
                         __hiloint2double(part1.w, part1.z),
                         __hiloint2double(part2.y, part2.x),
                         __hiloint2double(part2.w, part2.z));
+
+
+
+//! Fetch a Scalar3 value from 2D texture memory.
+/*! This function should be called whenever a CUDA kernel wants to retrieve a
+    Scalar3 value from 2D texture memory.
+
+    \param ptr Pointer to bound memory
+    \param tex_ref Texture in which the desired values are stored.
+    \param ii i-Index at which to look.
+    \param jj j-index at which to look.
+*/
+__device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1> tex_ref,
+        unsigned int ii)
+    {
+    unsigned int idx = 2*ii;
+    #if __CUDA_ARCH__ >= 350
+    int3 part1 = __ldg(((int3 *)ptr) + idx);
+    int3 part2 = __ldg(((int3 *)ptr) + idx1 + 1);
+    #else
+    throw std::runtime_error("CUDA Compute below 3.5 is not supported");
+    //int3 part1 = tex2D(tex_ref, ii, idx2);
+    //int3 part2 = tex2D(tex_ref, ii, idx2 + 1);
+    #endif
+    return make_scalar3(__hiloint2double(part1.y, part1.x),
+                        __hiloint2double(part2.x, part1.z),
+                        __hiloint2double(part2.z, part2.y));
+
     }
+
+}
+
+
+
+
 #endif
 #endif
 

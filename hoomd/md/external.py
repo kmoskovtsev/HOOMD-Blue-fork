@@ -305,6 +305,62 @@ class periodic(_external_force):
 
         return _hoomd.make_scalar4(_hoomd.int_as_scalar(i), A, w, _hoomd.int_as_scalar(p));
 
+
+
+
+class periodic_cos(_external_force):
+    R""" One-dimension periodic potential.
+
+    :py:class:`periodic` specifies that an external force should be
+    added to every particle in the simulation to induce a periodic modulation
+    in the particle concentration. The force parameters can be set on a per particle
+    type basis. The potential can e.g. be used to induce an ordered phase in a block-copolymer melt.
+
+    The external potential :math:`V(\vec{r})` is implemented using the following formula:
+
+    .. math::
+
+       V(\vec{r}) = A * \cos\left(p \vec{b}_i\cdot\vec{r}\right)
+
+    where :math:`A` is the ordering parameter, :math:`\vec{b}_i` is the reciprocal lattice vector direction
+    :math:`i=0..2`, :math:`p` the periodicity.
+    The modulation is one-dimensional. It extends along the lattice vector :math:`\mathbf{a}_i` of the
+    simulation cell.
+
+    Examples::
+
+        # Apply a periodic composition modulation along the first lattice vector
+        periodic = external.periodic()
+        periodic.force_coeff.set('A', A=1.0, i=0, p=3)
+        periodic.force_coeff.set('B', A=-1.0, i=0, p=3)
+    """
+    def __init__(self, name=""):
+        hoomd.util.print_status_line();
+
+        # initialize the base class
+        _external_force.__init__(self, name);
+
+        # create the c++ mirror class
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_force = _md.PotentialExternalPeriodicCos(hoomd.context.current.system_definition,self.name);
+        else:
+            self.cpp_force = _md.PotentialExternalPeriodicCosGPU(hoomd.context.current.system_definition,self.name);
+
+        hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
+
+        # setup the coefficient options
+        self.required_coeffs = ['A','i','p'];
+
+    def process_coeff(self, coeff):
+        A = coeff['A'];
+        i = coeff['i'];
+        p = coeff['p'];
+
+        return _hoomd.make_scalar3(_hoomd.int_as_scalar(i), A, _hoomd.int_as_scalar(p));
+
+
+
+
 class e_field(_external_force):
     R""" Electric field.
 

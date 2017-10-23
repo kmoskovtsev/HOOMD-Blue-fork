@@ -9,6 +9,7 @@
 
 #include "PotentialExternal.h"
 #include "EvaluatorExternalPeriodic.h"
+#include "EvaluatorExternalPeriodicCos.h"
 #include "EvaluatorExternalElectricField.h"
 #include "EvaluatorWalls.h"
 #include "AllPairPotentials.h"
@@ -27,6 +28,8 @@
 
 //! External potential to impose periodic structure
 typedef PotentialExternal<EvaluatorExternalPeriodic> PotentialExternalPeriodic;
+typedef PotentialExternal<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCos;
+
 
 //! Electric field
 typedef PotentialExternal<EvaluatorExternalElectricField> PotentialExternalElectricField;
@@ -43,6 +46,7 @@ typedef PotentialExternal<EvaluatorWalls<EvaluatorPairMorse> > WallsPotentialMor
 #ifdef ENABLE_CUDA
 //! External potential to impose periodic structure on the GPU
 typedef PotentialExternalGPU<EvaluatorExternalPeriodic> PotentialExternalPeriodicGPU;
+typedef PotentialExternalGPU<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCosGPU;
 typedef PotentialExternalGPU<EvaluatorExternalElectricField> PotentialExternalElectricFieldGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairLJ> > WallsPotentialLJGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairSLJ> > WallsPotentialSLJGPU;

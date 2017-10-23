@@ -1,4 +1,6 @@
-# HOOMD-blue
+# HOOMD-blue fork
+This is my fork of HOOMD-blue that includes 2D-table-potential forces (to do 2D Ewald summation), cos-modulated potential, and Gaussian noise in Langevin integrator. The code is still in testing, so it may be malfunctioning at the moment.
+
 
 HOOMD-blue is a general purpose particle simulation toolkit. It performs hard particle Monte Carlo simulations
 of a variety of shape classes, and molecular dynamics simulations of particles with a range of pair, bond, angle,

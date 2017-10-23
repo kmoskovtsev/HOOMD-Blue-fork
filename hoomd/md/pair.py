@@ -1270,7 +1270,7 @@ class table2D(force._force):
 
         # create the c++ mirror class
         #if not hoomd.context.exec_conf.isCUDAEnabled():
-            self.cpp_force = _md.TablePotential2D(hoomd.context.current.system_definition, int(width), int(height), self.name);
+        self.cpp_force = _md.TablePotential2D(hoomd.context.current.system_definition, int(width), int(height), self.name);
         #else:
         #    self.nlist.cpp_nlist.setStorageMode(_md.NeighborList.storageMode.full);
         #    self.cpp_force = _md.TablePotentialGPU(hoomd.context.current.system_definition, self.nlist.cpp_nlist, int(width), self.name);
@@ -1283,7 +1283,7 @@ class table2D(force._force):
         self.Lx_div2 = Lx_div2;
         self.Ly_div2 = Ly_div2;
 
-
+    """
     def update_pair_table(self, typei, typej, func, Lx_div2, Ly_div2, coeff):
         # allocate arrays to store V and F
         Vtable = _hoomd.std_vector_scalar();
@@ -1308,10 +1308,11 @@ class table2D(force._force):
 
         # pass the tables on to the underlying cpp compute
         self.cpp_force.setTable(Vtable, Fxtable, Fytable);
-
+    """
     ## \internal
     # \brief Get the r_cut pair dictionary
     # \returns rcut(i,j) dict if logging is on, and None otherwise
+    """
     def get_rcut(self):
         if not self.log:
             return None
@@ -1349,7 +1350,9 @@ class table2D(force._force):
                 maxrmax = max(maxrmax, rmax);
 
         return maxrmax;
+    """
 
+    """
     def update_coeffs(self):
         # check that the pair coefficents are valid
         if not self.pair_coeff.verify(["func", "rmin", "rmax", "coeff"]):
@@ -1371,8 +1374,12 @@ class table2D(force._force):
                 coeff = self.pair_coeff.get(type_list[i], type_list[j], "coeff");
 
                 self.update_pair_table(i, j, func, rmin, rmax, coeff);
+    """
 
-    def set_from_file(self, a, b, filename):
+    def update_coeffs(self):
+        pass
+
+    def set_from_file(self, filename):
         R""" Set a pair interaction from a file.
 
         Args:
@@ -1384,16 +1391,19 @@ class table2D(force._force):
 
         Example::
 
-            #r  V    F
-            1.0 2.0 -3.0
-            1.1 3.0 -4.0
-            1.2 2.0 -3.0
-            1.3 1.0 -2.0
-            1.4 0.0 -1.0
-            1.5 -1.0 0.0
+            #rx ry  V    Fx   Fy
+            1.0 1.0 2.0 -3.0 1.0
+            3.0 1.0 3.0 -4.0 1.0
+            5.0 1.0 3.0 -4.5 1.4
+            1.0 1.2 2.0  1.0 0.5
+            3.0 1.2 0.0 -1.0 0.8
+            5.0 1.2 -1.0 0.0 -1.1
 
-        The first r value sets *rmin*, the last sets *rmax*. Any line with # as the first non-whitespace character is
-        is treated as a comment. The *r* values must monotonically increase and be equally spaced. The table is read
+        The first (rx, ry) value sets (h1/2, h2/2), the last sets (L1/2 - h1/2, L2/2 - h2/2).
+        Any line with # as the first non-whitespace character is
+        treated as a comment. The rx values must monotonically increase inside each segment of lenght *width* and be equally spaced. 
+        The ry values must be the same inside segments of length *width* and increment by h2 from segment to segment.
+        The table is read
         directly into the grid points used to evaluate :math:`F_{\mathrm{user}}(r)` and :math:`_{\mathrm{user}}(r)`.
         """
         hoomd.util.print_status_line();
@@ -1401,9 +1411,12 @@ class table2D(force._force):
         # open the file
         f = open(filename);
 
-        r_table = [];
-        V_table = [];
-        F_table = [];
+        rx_table = [];
+        ry_table = [];
+        V_table = _hoomd.std_vector_scalar();
+        Fx_table = _hoomd.std_vector_scalar();
+        Fy_table = _hoomd.std_vector_scalar();
+
 
         # read in lines from the file
         for line in f.readlines():
@@ -1418,34 +1431,37 @@ class table2D(force._force):
             values = [float(f) for f in cols];
 
             # validate the input
-            if len(values) != 3:
-                hoomd.context.msg.error("pair.table: file must have exactly 3 columns\n");
+            if len(values) != 5:
+                hoomd.context.msg.error("pair.table2D: file must have exactly 5 columns\n");
                 raise RuntimeError("Error reading table file");
 
             # append to the tables
-            r_table.append(values[0]);
-            V_table.append(values[1]);
-            F_table.append(values[2]);
+            rx_table.append(values[0]);
+            ry_table.append(values[1]);
+            V_table.append(values[2]);
+            Fx_table.append(values[3]);
+            Fy_table.append(values[4]);
 
         # validate input
-        if self.width != len(r_table):
-            hoomd.context.msg.error("pair.table: file must have exactly " + str(self.width) + " rows\n");
+        if self.width*self.height != len(rx_table):
+            hoomd.context.msg.error("pair.table: file must have exactly " + str(self.width*self_height) + " rows\n");
             raise RuntimeError("Error reading table file");
 
         # extract rmin and rmax
-        rmin_table = r_table[0];
-        rmax_table = r_table[-1];
+        #rmin_table = r_table[0];
+        #rmax_table = r_table[-1];
 
         # check for even spacing
-        dr = (rmax_table - rmin_table) / float(self.width-1);
-        for i in range(0,self.width):
-            r = rmin_table + dr * i;
-            if math.fabs(r - r_table[i]) > 1e-3:
-                hoomd.context.msg.error("pair.table: r must be monotonically increasing and evenly spaced\n");
-                raise RuntimeError("Error reading table file");
+        #dr = (rmax_table - rmin_table) / float(self.width-1);
+        #for i in range(0,self.width):
+        #    r = rmin_table + dr * i;
+        #    if math.fabs(r - r_table[i]) > 1e-3:
+        #        hoomd.context.msg.error("pair.table: r must be monotonically increasing and evenly spaced\n");
+        #        raise RuntimeError("Error reading table file");
 
         hoomd.util.quiet_status();
-        self.pair_coeff.set(a, b, func=_table_eval, rmin=rmin_table, rmax=rmax_table, coeff=dict(V=V_table, F=F_table, width=self.width))
+        #self.pair_coeff.set(a, b, func=_table_eval, rmin=rmin_table, rmax=rmax_table, coeff=dict(V=V_table, F=F_table, width=self.width))
+        self.cpp_force.setTable(V_table, Fx_table, Fy_table);
         hoomd.util.unquiet_status();
 
 

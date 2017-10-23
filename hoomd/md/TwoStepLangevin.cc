@@ -279,9 +279,13 @@ void TwoStepLangevin::integrateStepTwo(unsigned int timestep)
 
         // first, calculate the BD forces
         // Generate three random numbers
-        Scalar rx = saru.s<Scalar>(-1,1);
-        Scalar ry = saru.s<Scalar>(-1,1);
-        Scalar rz = saru.s<Scalar>(-1,1);
+        Scalar rx = gaussian_rng(saru, Scalar(1.0));
+        Scalar ry = gaussian_rng(saru, Scalar(1.0));
+        Scalar rz = gaussian_rng(saru, Scalar(1.0));
+
+        //Scalar rx = saru.s<Scalar>(-1,1);
+        //Scalar ry = saru.s<Scalar>(-1,1);
+        //Scalar rz = saru.s<Scalar>(-1,1);
 
         Scalar gamma;
         if (m_use_lambda)
@@ -293,7 +297,9 @@ void TwoStepLangevin::integrateStepTwo(unsigned int timestep)
             }
 
         // compute the bd force
-        Scalar coeff = fast::sqrt(Scalar(6.0) *gamma*currentTemp/m_deltaT);
+        //Scalar coeff = fast::sqrt(Scalar(6.0) *gamma*currentTemp/m_deltaT); //version for uniform rng
+        Scalar coeff = fast::sqrt(Scalar(2.0) *gamma*currentTemp/m_deltaT); //version for Gaussian rng
+
         if (m_noiseless_t)
             coeff = Scalar(0.0);
         Scalar bd_fx = rx*coeff - gamma*h_vel.data[j].x;

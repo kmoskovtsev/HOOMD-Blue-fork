@@ -27,6 +27,7 @@ set(_md_sources module-md.cc
                    TableAngleForceCompute.cc
                    TableDihedralForceCompute.cc
                    TablePotential.cc
+                   TablePotential2D.cc
                    TempRescaleUpdater.cc
                    TwoStepBD.cc
                    TwoStepBerendsen.cc
@@ -133,6 +134,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TableDihedralForceCompute.h
                 TablePotentialGPU.h
                 TablePotential.h
+                TablePotential2D.h
                 TempRescaleUpdater.h
                 TwoStepBDGPU.h
                 TwoStepBD.h

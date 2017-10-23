@@ -3,7 +3,7 @@
 
 
 // Maintainer: joaander
-#include "TablePotential.h"
+#include "TablePotential2D.h"
 
 namespace py = pybind11;
 
@@ -24,7 +24,7 @@ TablePotential2D::TablePotential2D(std::shared_ptr<SystemDefinition> sysdef,
                                unsigned int table_width,
                                unsigned int table_height,
                                const std::string& log_suffix)
-        : ForceCompute(sysdef), m_nlist(nlist), m_table_width(table_width), m_table_height(table_height)
+        : ForceCompute(sysdef), m_table_width(table_width), m_table_height(table_height)
     {
     m_exec_conf->msg->notice(5) << "Constructing TablePotential" << endl;
 
@@ -56,7 +56,7 @@ TablePotential2D::TablePotential2D(std::shared_ptr<SystemDefinition> sysdef,
     Edge points of the mesh are 1/2 period apart from the simulation box edges.
     x and y periods may be different, periods are h1 = a1/table_width and h2 = a2/table_height.*/
 
-    GPUArray<Scalar3> tables(m_table_height, m_table_width, m_exec_conf);
+    GPUArray<Scalar3> tables(m_table_width, m_table_height, m_exec_conf);
     m_tables.swap(tables);
     GPUArray<Scalar2> params(1, m_exec_conf);
     m_params.swap(params);
@@ -117,6 +117,10 @@ void TablePotential2D::setTable(const std::vector<Scalar> &V,
     ArrayHandle<Scalar3> h_tables(m_tables, access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar2> h_params(m_params, access_location::host, access_mode::readwrite);
     unsigned int pitch = m_tables.getPitch();
+    //std::cout << "Pitch = " << pitch << '\n';
+    //std::cout << "len(h_tables.data) = " << m_tables.getNumElements() << '\n';
+    //std::cout << "len(V)" << V.size() << '\n';
+    
     //Check size:
     if (V.size() != m_table_width*m_table_height || F1.size() != m_table_width*m_table_height ||
             F2.size() != m_table_width*m_table_height)
@@ -130,17 +134,19 @@ void TablePotential2D::setTable(const std::vector<Scalar> &V,
         throw runtime_error("Error initializing TablePotential2D");
         }
     const BoxDim& box = m_pdata->getBox();
-    Scalar3 box_L = box.get_L;
+    Scalar3 box_L = box.getL();
     // fill out the parameters
-    h_params.data[0].x = box_L.x/m_table_width/2; //mesh step along x
-    h_params.data[0].y = box_L.y/m_table_height/2; //mesh step along y
+    h_params.data[0].x = box_L.x/Scalar(m_table_width)*Scalar(0.5); //mesh step along x
+    h_params.data[0].y = box_L.y/Scalar(m_table_height)*Scalar(0.5); //mesh step along y
     //h_params.data[cur_table_index].z = (rmax - rmin) / Scalar(m_table_width - 1);
 
     // fill out the table
-    for (unsigned int i = 0; i < m_table_width; i++)
+    for (unsigned int j = 0; j < m_table_height; j++)
         {
-        for (unsigned int j = 0; j < m_table_height; j++)
+        for (unsigned int i = 0; i < m_table_width; i++)
             {
+            //std::cout << "j*pitch + i = " << j*pitch + i << '\n';
+            //std::cout << "j*m_table_width + i = " << j*m_table_width + i << '\n';
             h_tables.data[j*pitch + i].x = V[j*m_table_width + i];
             h_tables.data[j*pitch + i].y = F1[j*m_table_width + i];
             h_tables.data[j*pitch + i].z = F2[j*m_table_width + i];
@@ -171,7 +177,7 @@ Scalar TablePotential2D::getLogValue(const std::string& quantity, unsigned int t
         throw runtime_error("Error getting log value");
         }
     }
-/* Calculate absolute value of Scalar3 component-wise:
+/*! \post Calculate absolute value of Scalar3 component-wise:
 
    */
 Scalar3 Scalar3Abs(Scalar3 r)
@@ -181,7 +187,7 @@ Scalar3 Scalar3Abs(Scalar3 r)
         {
             res.x = - res.x;
         }
-    if (res.x < 0)
+    if (res.y < 0)
         {
             res.y = - res.y;
         }
@@ -191,6 +197,26 @@ Scalar3 Scalar3Abs(Scalar3 r)
         }
     return res;
     }
+
+
+/*! \post Restore the force direction using mirror symmetry.
+    Originally, the force is computed for dx reflected into upper-right quarter of the unit cell.
+    VF = (V, F_x, F_y)
+    dx = vector pointing from particle i to particle k
+*/
+Scalar3 restoreForceDirection(Scalar3 VF, Scalar3 dx)
+    {
+    if (dx.x < 0)
+        {
+        VF.y = - VF.y;
+        }
+    if (dx.y < 0)
+        {
+        VF.z = - VF.z;
+        }
+    return VF;
+    }
+
 
 /*! \post The table based forces are computed for the given timestep. The neighborlist's
 compute method is called to ensure that it is up to date.
@@ -219,6 +245,9 @@ void TablePotential2D::computeForces(unsigned int timestep)
 
     // access the particle data
     ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::read);
+    
+    //to check that m_pdata is valid
+    ArrayHandle<Scalar> h_charge(m_pdata->getCharges(), access_location::host, access_mode::read);
 
     ArrayHandle<Scalar4> h_force(m_force,access_location::host, access_mode::overwrite);
     ArrayHandle<Scalar> h_virial(m_virial,access_location::host, access_mode::overwrite);
@@ -236,24 +265,30 @@ void TablePotential2D::computeForces(unsigned int timestep)
     const BoxDim& box = m_pdata->getBox();
 
     // access the table data
-    ArrayHandle<Scalar2> h_tables(m_tables, access_location::host, access_mode::read);
-    ArrayHandle<Scalar4> h_params(m_params, access_location::host, access_mode::read);
+    ArrayHandle<Scalar3> h_tables(m_tables, access_location::host, access_mode::read);
+    ArrayHandle<Scalar2> h_params(m_params, access_location::host, access_mode::read);
 
-    unsigned int pitch = m_tables.getPitch();
+    int pitch = m_tables.getPitch();
 
     // index calculation helpers
     //Index2DUpperTriangular table_index(m_ntypes);
     //Index2D table_value(m_table_width);
 
+    Scalar2 params = h_params.data[0];
+    Scalar h1 = params.x; //step along x
+    Scalar h2 = params.y; //step along y
+
+    //std::cout << "m_tables size = " << m_tables.getNumElements() << '\n';
+    unsigned int ui = 0;
+
     // for each particle
     for (int i = 0; i < (int) m_pdata->getN(); i++)
         {
+        //std::cout << "===================================\n";
         // access the particle's position and type (MEM TRANSFER: 4 scalars)
         Scalar3 pi = make_scalar3(h_pos.data[i].x, h_pos.data[i].y, h_pos.data[i].z);
-        //unsigned int typei = __scalar_as_int(h_pos.data[i].w);
-        //const unsigned int head_i = h_head_list.data[i];
-        // sanity check
-        //assert(typei < m_pdata->getNTypes());
+        //std::cout << "pi = (" << pi.x << ", " << pi.y << ")\n";
+        //std::cout << "charge(i) = " << h_charge.data[i] << '\n';
 
         // initialize current particle force, potential energy, and virial to 0
         Scalar3 fi = make_scalar3(0,0,0);
@@ -267,142 +302,164 @@ void TablePotential2D::computeForces(unsigned int timestep)
 
         // loop over all particles (all particles are neighbors for long range)
         //const unsigned int size = (unsigned int)h_n_neigh.data[i];
-        for (unsigned int j = i + 1; j < (int) m_pdata->getN(); j++)
+        for (unsigned int j = i + 1; j < (unsigned int) m_pdata->getN(); j++)
             {
             // access the index of this neighbor
             unsigned int k = j;
 
+            //std::cout << "----------------------------------\n";
             // calculate dr
             Scalar3 pk = make_scalar3(h_pos.data[k].x, h_pos.data[k].y, h_pos.data[k].z);
             Scalar3 dx = pi - pk;
+            //std::cout << "pk = (" << pk.x << ", " << pk.y << ")\n";
+            //std::cout << "charge(k) = " << h_charge.data[k] << '\n';
 
             // access the type of the neighbor particle
             //unsigned int typej = __scalar_as_int(h_pos.data[k].w);
             // sanity check
             //assert(typej < m_pdata->getNTypes());
 
+            //std::cout << "dx.x before minImage: " << dx.x << '\n';
+            //std::cout << "dx.y before minImage: " << dx.y << '\n';
             // apply periodic boundary conditions
             dx = box.minImage(dx);
             //Calculate force for absolute of dx first (component-wise),
             //restore direction from symmetry later
             Scalar3 dxa = Scalar3Abs(dx);
-            // access needed parameters
-            //unsigned int cur_table_index = table_index(typei, typej);
-            Scalar4 params = h_params.data[0];
-            Scalar h1 = params.x; //step along x
-            Scalar h2 = params.y; //step along y
 
             // start computing the force
-            Scalar rsq = dot(dx, dx);
-            Scalar r = sqrt(rsq);
-
+            //Use bilinear interpolation. f1 and f2 are "locations" of the dxa on the grid
             Scalar value_f1 = (dxa.x - h1*Scalar(0.5)) / h1;
             Scalar value_f2 = (dxa.y - h2*Scalar(0.5)) / h2;
 
             // compute index into the table and read in values
-            unsigned int value_i = (unsigned int)floor(value_f1);
-            unsigned int value_j = (unsigned int)floor(value_f2);
+            int value_i = (int)floor(value_f1);
+            int value_j = (int)floor(value_f2);
+            Scalar3 zeroScalar3 = make_scalar3(0, 0, 0);
+            //init potential-force values at the adjacent nodes
+            Scalar3 VF00 = zeroScalar3;
+            Scalar3 VF01 = zeroScalar3;
+            Scalar3 VF10 = zeroScalar3;
+            Scalar3 VF11 = zeroScalar3;
+            /*
+            std::cout << "i = " << i << ", j = " << j << '\n';
+            std::cout << "dx.x = " << dx.x << '\n';
+            std::cout << "dx.y = " << dx.y << '\n';
+            std::cout << "dxa.x = " << dxa.x << '\n';
+            std::cout << "dxa.y = " << dxa.y << '\n';
+            std::cout << "value_f1 = " << value_f1 << '\n';
+            std::cout << "value_f2 = " << value_f2 << '\n';
+            std::cout << "value_i = " << value_i << '\n';
+            std::cout << "value_j = " << value_j << '\n';
+            std::cout << "pitch = " << pitch << '\n';
+            std::cout << "value_j*pitch + value_i = " << value_j*pitch + value_i << '\n';
+            */
             if (value_i == -1 && value_j == -1)
                 {
-                Scalar3 VF11 = h_tables.data[0];
-                Scalar3 VF00 = VF11;
+                VF11 = h_tables.data[0];
+                VF00 = VF11;
                 VF00.y = - VF00.y; //invert both force components
                 VF00.z = - VF00.z;
-                Scalar3 VF01 = VF11;
+                VF01 = VF11;
                 VF01.y = - VF01.y; //invert F_x
-                Scalar3 VF10 = F11;
+                VF10 = VF11;
                 VF10.z = - VF10.z; //invert F_y
                 }
-            else if (value_i == - 1 && value_j > -1 && value_j < m_table_height - 1)
+            else if (value_i == - 1 && value_j > -1 && value_j < (int) m_table_height - 1)
                 {
-                Scalar3 VF10 = h_tables.data[value_j*pitch + value_i + 1];
-                Scalar3 VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
-                Scalar3 VF00 = VF10;
+                VF10 = h_tables.data[value_j*pitch + value_i + 1];
+                VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
+                VF00 = VF10;
                 VF00.y = - VF00.y; //invert F_x
-                Scalar3 VF01 = V11;
+                VF01 = VF11;
                 VF01.y = - VF01.y;//invert F_x
                 }
-            else if (value_i == -1 && value_j == m_table_height - 1)
+            else if (value_i == -1 && value_j == (int) m_table_height - 1)
                 {
-                Scalar3 VF10 = h_tables.data[value_j*pitch + value_i + 1];
-                Scalar3 VF00 = VF10;
+                VF10 = h_tables.data[value_j*pitch + value_i + 1];
+                VF00 = VF10;
                 VF00.y = - VF00.y; //invert F_x
-                Scalar3 VF01 = VF00;
+                VF01 = VF00;
                 VF01.z = - VF01.z; //invert F_x and F_y
-                Scalar3 VF11 = VF10;
+                VF11 = VF10;
                 VF11.z = - VF11.z; //invert F_y
                 }
-            else if (value_i > -1 && value_i < m_table_width - 1 && value_j == -1)
+            else if (value_i > -1 && value_i < (int) m_table_width - 1 && value_j == (int) m_table_height - 1)
                 {
-                Scalar3 VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
-                Scalar3 VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
-                Scalar3 VF00 = VF01;
-                VF00.z = - VF00.z;
-                Scalar3 VF10 = VF11;
-                VF10.z = - VF10.z;
+                VF00 = h_tables.data[value_j*pitch + value_i];
+                VF10 = h_tables.data[value_j*pitch + value_i + 1];
+                VF01 = VF00;
+                VF01.z = - VF01.z;
+                VF11 = VF10;
+                VF11.z = - VF11.z;
                 }
-            else if (value_i == m_table_width - 1 && value_j == m_table_height - 1)
+            else if (value_i == (int) m_table_width - 1 && value_j == (int) m_table_height - 1)
                 {
-                Scalar3 VF00 = h_tables.data[value_j*pitch + value_i];
-                Scalar3 VF10 = VF00;
+                VF00 = h_tables.data[value_j*pitch + value_i];
+                VF10 = VF00;
                 VF10.y = - VF10.y; //reflect F_x
-                Scalar3 VF01 = VF00;
+                VF01 = VF00;
                 VF01.z = - VF01.z; //reflect F_y
-                Scalar3 VF11 = VF01;
+                VF11 = VF01;
                 VF11.y = - VF11.y;
                 }
-            else if (value_i == m_table_width - 1 && value_j > -1 && value_j < m_table_height - 1)
+            else if (value_i == (int) m_table_width - 1 && value_j > -1 && value_j < (int) m_table_height - 1)
                 {
-                Scalar3 VF00 = h_tables.data[value_j*pitch + value_i];
-                Scalar3 VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
-                Scalar3 VF10 = VF00;
+                VF00 = h_tables.data[value_j*pitch + value_i];
+                VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
+                VF10 = VF00;
                 VF10.y = - VF10.y;
-                Scalar3 VF11 = VF01;
+                VF11 = VF01;
                 VF11.y = - VF11.y;
                 }
-            else if (value_i == m_table_width - 1 && value_j == -1)
+            else if (value_i == (int) m_table_width - 1 && value_j == -1)
                 {
-                Scalar3 VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
-                Scalar3 VF00 = VF01;
+                VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
+                VF00 = VF01;
                 VF00.z = - VF00.z;
-                Scalar3 VF10 = VF00;
+                VF10 = VF00;
                 VF10.y = - VF10.y;
-                Scalar3 VF11 = VF01;
+                VF11 = VF01;
                 VF11.y = - VF11.y;
                 }
-            else if (value_i > -1 && value_i < m_table_width - 1 && j == -1)
+            else if (value_i > -1 && value_i < (int) m_table_width - 1 && value_j == -1)
                 {
-                Scalar3 VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
-                Scalar3 VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
-                Scalar3 VF00 = VF01;
+                VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
+                VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
+                VF00 = VF01;
                 VF00.z = - VF00.z;
-                Scalar3 VF10 = VF11;
+                VF10 = VF11;
                 VF10.z = - VF10.z;
                 }
             else
                 {
-                Scalar3 VF00 = h_tables.data[value_j*pitch + value_i];
-                Scalar3 VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
-                Scalar3 VF10 = h_tables.data[value_j*pitch + value_i + 1];
-                Scalar3 VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
+                VF00 = h_tables.data[value_j*pitch + value_i];
+                VF01 = h_tables.data[(value_j + 1)*pitch + value_i];
+                VF10 = h_tables.data[value_j*pitch + value_i + 1];
+                VF11 = h_tables.data[(value_j + 1)*pitch + value_i + 1];
                 }
-            // unpack the data
-            //Scalar V00 = VF00.x;
-            //Scalar V01 = V
-            //Scalar V1 = VF1.x;
-            //Scalar F0 = VF0.y;
-            //Scalar F1 = VF1.y;
 
-            // compute the linear interpolation coefficient
+            // compute the bilinear interpolation coefficient
             Scalar f1 = value_f1 - Scalar(value_i);
             Scalar f2 = value_f2 - Scalar(value_j);
 
             // interpolate to get V and F;
-            //Scalar V = V0 + f * (V1 - V0);
-            //Scalar F = F0 + f * (F1 - F0);
             //Bilinear interpolation:
-            Scalar3 VF = VF00 + f1*(VF10 - VF00) + f2*(V01 - V00) + f1*f2*(V00 + V11 - V01 - V10);
-
+            Scalar3 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
+            /*
+            if (VF.y > 10000 || VF.z > 10000 || VF.y < -10000 || VF.z < -10000)
+                {
+                std::cout << "VF00.y = " << VF00.y << '\n';
+                std::cout << "VF00.z = " << VF00.z << '\n';
+                std::cout << "VF01.y = " << VF01.y << '\n';
+                std::cout << "VF01.z = " << VF00.z << '\n';
+                std::cout << "VF10.y = " << VF10.y << '\n';
+                std::cout << "VF10.z = " << VF10.z << '\n';
+                std::cout << "VF11.y = " << VF11.y << '\n';
+                std::cout << "VF11.z = " << VF11.z << '\n';
+                }
+                */
+            VF = restoreForceDirection(VF, dx);
             // convert to standard variables used by the other pair computes in HOOMD-blue
             Scalar pair_eng = Scalar(0.5) * VF.x;
             Scalar Fx_div2 = Scalar(0.5)*VF.y;
@@ -421,6 +478,9 @@ void TablePotential2D::computeForces(unsigned int timestep)
             fi.x += VF.y;
             fi.y += VF.z;
             pei += pair_eng;
+
+            //std::cout << "F_i = (" << VF.y << ", " << VF.z << ")\n";
+            //std::cout << "pair energy = " << pair_eng << '\n';
 
             // add the force to particle j if we are using the third law
             // only add force to local particles
@@ -457,11 +517,11 @@ void TablePotential2D::computeForces(unsigned int timestep)
     if (m_prof) m_prof->pop();
     }
 
-//! Exports the TablePotential class to python
+//! Exports the TablePotential2D class to python
 void export_TablePotential2D(py::module& m)
     {
     py::class_<TablePotential2D, std::shared_ptr<TablePotential2D> >(m, "TablePotential2D", py::base<ForceCompute>())
-    .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<NeighborList>, unsigned int, const std::string& >())
+    .def(py::init< std::shared_ptr<SystemDefinition>, unsigned int, unsigned int, const std::string& >())
     .def("setTable", &TablePotential2D::setTable)
     ;
     }

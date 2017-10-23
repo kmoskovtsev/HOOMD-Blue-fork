@@ -21,8 +21,8 @@
 
 #include <hoomd/extern/pybind/include/pybind11/pybind11.h>
 
-#ifndef __TABLEPOTENTIAL_H__
-#define __TABLEPOTENTIAL_H__
+#ifndef __TABLEPOTENTIAL2D_H__
+#define __TABLEPOTENTIAL2D_H__
 
 //! Computes the potential and force on each particle based on values given in a 2D table
 /*! \b Overview
@@ -64,7 +64,7 @@ class TablePotential2D : public ForceCompute
     {
     public:
         //! Constructs the compute
-        TablePotential2D(std::shared_ptr<SystemDefinition> sysdef,,
+        TablePotential2D(std::shared_ptr<SystemDefinition> sysdef,
                        unsigned int table_width,
                        unsigned int table_height,
                        const std::string& log_suffix="");
@@ -98,7 +98,7 @@ class TablePotential2D : public ForceCompute
         //virtual void slotNumTypesChange();
     };
 
-//! Exports the TablePotential class to python
+//! Exports the TablePotential2D class to python
 void export_TablePotential2D(pybind11::module& m);
 
 #endif
