@@ -147,7 +147,7 @@ class EvaluatorExternalPeriodicCos
         */
         static std::string getName()
             {
-            return std::string("periodic");
+            return std::string("periodic_cos");
             }
         #endif
 

@@ -56,7 +56,7 @@ TablePotential2D::TablePotential2D(std::shared_ptr<SystemDefinition> sysdef,
     Edge points of the mesh are 1/2 period apart from the simulation box edges.
     x and y periods may be different, periods are h1 = a1/table_width and h2 = a2/table_height.*/
 
-    GPUArray<Scalar3> tables(m_table_width, m_table_height, m_exec_conf);
+    GPUArray<Scalar4> tables(m_table_width, m_table_height, m_exec_conf);
     m_tables.swap(tables);
     GPUArray<Scalar2> params(1, m_exec_conf);
     m_params.swap(params);
@@ -114,7 +114,7 @@ void TablePotential2D::setTable(const std::vector<Scalar> &V,
     {
 
     // access the arrays
-    ArrayHandle<Scalar3> h_tables(m_tables, access_location::host, access_mode::readwrite);
+    ArrayHandle<Scalar4> h_tables(m_tables, access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar2> h_params(m_params, access_location::host, access_mode::readwrite);
     unsigned int pitch = m_tables.getPitch();
     //std::cout << "Pitch = " << pitch << '\n';
@@ -150,6 +150,7 @@ void TablePotential2D::setTable(const std::vector<Scalar> &V,
             h_tables.data[j*pitch + i].x = V[j*m_table_width + i];
             h_tables.data[j*pitch + i].y = F1[j*m_table_width + i];
             h_tables.data[j*pitch + i].z = F2[j*m_table_width + i];
+            h_tables.data[j*pitch + i].w = 0;
             }
         }
     }
@@ -204,7 +205,7 @@ Scalar3 Scalar3Abs(Scalar3 r)
     VF = (V, F_x, F_y)
     dx = vector pointing from particle i to particle k
 */
-Scalar3 restoreForceDirection(Scalar3 VF, Scalar3 dx)
+Scalar4 restoreForceDirection(Scalar4 VF, Scalar3 dx)
     {
     if (dx.x < 0)
         {
@@ -265,7 +266,7 @@ void TablePotential2D::computeForces(unsigned int timestep)
     const BoxDim& box = m_pdata->getBox();
 
     // access the table data
-    ArrayHandle<Scalar3> h_tables(m_tables, access_location::host, access_mode::read);
+    ArrayHandle<Scalar4> h_tables(m_tables, access_location::host, access_mode::read);
     ArrayHandle<Scalar2> h_params(m_params, access_location::host, access_mode::read);
 
     int pitch = m_tables.getPitch();
@@ -279,7 +280,6 @@ void TablePotential2D::computeForces(unsigned int timestep)
     Scalar h2 = params.y; //step along y
 
     //std::cout << "m_tables size = " << m_tables.getNumElements() << '\n';
-    unsigned int ui = 0;
 
     // for each particle
     for (int i = 0; i < (int) m_pdata->getN(); i++)
@@ -335,12 +335,12 @@ void TablePotential2D::computeForces(unsigned int timestep)
             // compute index into the table and read in values
             int value_i = (int)floor(value_f1);
             int value_j = (int)floor(value_f2);
-            Scalar3 zeroScalar3 = make_scalar3(0, 0, 0);
+            Scalar4 zeroScalar4 = make_scalar4(0, 0, 0, 0);
             //init potential-force values at the adjacent nodes
-            Scalar3 VF00 = zeroScalar3;
-            Scalar3 VF01 = zeroScalar3;
-            Scalar3 VF10 = zeroScalar3;
-            Scalar3 VF11 = zeroScalar3;
+            Scalar4 VF00 = zeroScalar4;
+            Scalar4 VF01 = zeroScalar4;
+            Scalar4 VF10 = zeroScalar4;
+            Scalar4 VF11 = zeroScalar4;
             /*
             std::cout << "i = " << i << ", j = " << j << '\n';
             std::cout << "dx.x = " << dx.x << '\n';
@@ -445,7 +445,7 @@ void TablePotential2D::computeForces(unsigned int timestep)
 
             // interpolate to get V and F;
             //Bilinear interpolation:
-            Scalar3 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
+            Scalar4 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
             /*
             if (VF.y > 10000 || VF.z > 10000 || VF.y < -10000 || VF.z < -10000)
                 {

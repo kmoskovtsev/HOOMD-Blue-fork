@@ -128,9 +128,9 @@ void gpu_langevin_step_two_kernel(const Scalar4 *d_pos,
         //Initialize the Random Number Generator and generate the 3 random numbers
         detail::Saru s(ptag, timestep, seed); // 3 dimensional seeding
 
-        Scalar randomx = gaussian_rng(saru, Scalar(1.0));
-        Scalar randomy = gaussian_rng(saru, Scalar(1.0));
-        Scalar randomz = gaussian_rng(saru, Scalar(1.0));
+        Scalar randomx = gaussian_rng(s, Scalar(1.0));
+        Scalar randomy = gaussian_rng(s, Scalar(1.0));
+        Scalar randomz = gaussian_rng(s, Scalar(1.0));
         //Scalar randomx=s.s<Scalar>(-1.0, 1.0);
         //Scalar randomy=s.s<Scalar>(-1.0, 1.0);
         //Scalar randomz=s.s<Scalar>(-1.0, 1.0);

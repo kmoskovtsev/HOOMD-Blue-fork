@@ -69,6 +69,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 EvaluatorConstraintSphere.h
                 EvaluatorExternalElectricField.h
                 EvaluatorExternalPeriodic.h
+                EvaluatorExternalPeriodicCos.h
                 EvaluatorPairDipole.h
                 EvaluatorPairDPDLJThermo.h
                 EvaluatorPairDPDThermo.h
@@ -134,6 +135,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TableDihedralForceCompute.h
                 TablePotentialGPU.h
                 TablePotential.h
+                TablePotential2DGPU.h
                 TablePotential2D.h
                 TempRescaleUpdater.h
                 TwoStepBDGPU.h
@@ -176,6 +178,7 @@ list(APPEND _md_sources ActiveForceComputeGPU.cc
                            TableAngleForceComputeGPU.cc
                            TableDihedralForceComputeGPU.cc
                            TablePotentialGPU.cc
+                           TablePotential2DGPU.cc
                            TwoStepBDGPU.cc
                            TwoStepBerendsenGPU.cc
                            TwoStepLangevinGPU.cc
@@ -214,6 +217,7 @@ set(_md_cu_sources ActiveForceComputeGPU.cu
                       TableAngleForceGPU.cu
                       TableDihedralForceGPU.cu
                       TablePotentialGPU.cu
+                      TablePotential2DGPU.cu
                       TwoStepBDGPU.cu
                       TwoStepBerendsenGPU.cu
                       TwoStepLangevinGPU.cu

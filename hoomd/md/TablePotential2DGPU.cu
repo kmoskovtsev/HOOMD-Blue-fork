@@ -21,12 +21,13 @@ scalar4_tex_t pdata_pos_tex;
 //texture<unsigned int, 1, cudaReadModeElementType> nlist_tex;
 
 //! Texture for reading table values
-scalar3_tex_t tables_tex;
+scalar4_tex_t tables_tex;
 
+scalar2_tex_t params_tex;
 /* \post Calculate absolute value of Scalar3 component-wise:
 
 */
-Scalar3 Scalar3Abs(Scalar3 r)
+__device__ Scalar3 d_Scalar3Abs(Scalar3 r)
     {
     Scalar3 res = r;
     if (res.x < 0)
@@ -50,7 +51,7 @@ Scalar3 Scalar3Abs(Scalar3 r)
     VF = (V, F_x, F_y)
     dx = vector pointing from particle i to particle k
 */
-Scalar3 restoreForceDirection(Scalar3 VF, Scalar3 dx)
+__device__ Scalar4 d_restoreForceDirection(Scalar4 VF, Scalar3 dx)
     {
     if (dx.x < 0)
        {
@@ -95,16 +96,16 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
                                                 const unsigned int N,
                                                 const Scalar4 *d_pos,
                                                 const BoxDim box,
-                                                const Scalar2 *d_tables,
+                                                const Scalar4 *d_tables,
                                                 const unsigned tables_pitch,
-                                                const Scalar2 d_params,
+                                                const Scalar2 *d_params,
                                                 const unsigned int table_width,
                                                 const unsigned int table_height)
     {
 
     // read in params for easy and fast access in the kernel
     // params.x  h1 (grid step along x), params.y = h2 (step along y)
-    Scalar2 params = d_params;
+    Scalar2 params = texFetchScalar2(d_params, params_tex, 0);
     // access needed parameters
     Scalar h1 = params.x;
     Scalar h2 = params.y;
@@ -124,7 +125,7 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
     if (idx >= N)
         return;
 
-
+    //printf("idx = %d\n", idx);
     // read in the position of our particle. Texture reads of Scalar4's are faster than global reads on compute 1.0 hardware
     Scalar4 postype = texFetchScalar4(d_pos, pdata_pos_tex, idx);
     Scalar3 pos = make_scalar3(postype.x, postype.y, postype.z);
@@ -138,27 +139,29 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
     Scalar virialyz = Scalar(0.0);
     Scalar virialzz = Scalar(0.0);
 
-
+    
     // loop over neighbors
     for (int cur_neigh = 0; cur_neigh < N; cur_neigh++)
         {
-        if (neigh_idx == idx)
+        if (cur_neigh == idx)
             {
             // skip the particle itself
             continue;
             }
 
-
-        // get the neighbor's position
-        Scalar4 neigh_postype = texFetchScalar4(d_pos, pdata_pos_tex, cur_neigh);
-        Scalar3 neigh_pos = make_scalar3(neigh_postype.x, neigh_postype.y, neigh_postype.z);
+        Scalar4 postype_n = texFetchScalar4(d_pos, pdata_pos_tex, cur_neigh);
+        Scalar3 neigh_pos = make_scalar3(postype_n.x, postype_n.y, postype_n.z);
+        
+        //printf("neigh_pos = %f %f\n", neigh_pos.x, neigh_pos.y);
 
         // calculate dr (with periodic boundary conditions)
         Scalar3 dx = pos - neigh_pos;
 
+        //printf("dx = %f %f", dx.x, dx.y);
+        
         // apply periodic boundary conditions
         dx = box.minImage(dx);
-        Scalar3 dxa = Scalar3Abs(dx);
+        Scalar3 dxa = d_Scalar3Abs(dx);
 
         Scalar value_f1 = (dxa.x - h1*Scalar(0.5)) / h1;
         Scalar value_f2 = (dxa.y - h2*Scalar(0.5)) / h2;
@@ -166,16 +169,20 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
         // compute index into the table and read in values
         int value_i = (int)floor(value_f1);
         int value_j = (int)floor(value_f2);
-        Scalar3 zeroScalar3 = make_scalar3(0, 0, 0);
+
+        //printf("value_i = %d, value_j = %d\n", value_i, value_j);
+
+        Scalar4 zeroScalar4 = make_scalar4(0, 0, 0, 0);
         //init potential-force values at the adjacent nodes
-        Scalar3 VF00 = zeroScalar3;
-        Scalar3 VF01 = zeroScalar3;
-        Scalar3 VF10 = zeroScalar3;
-        Scalar3 VF11 = zeroScalar3;
+        Scalar4 VF00 = zeroScalar4;
+        Scalar4 VF01 = zeroScalar4;
+        Scalar4 VF10 = zeroScalar4;
+        Scalar4 VF11 = zeroScalar4;
 
         if (value_i == -1 && value_j == -1)
             {
-            VF11 = texFetchScalar3(d_tables, tables_tex, 0);
+            //printf("Case 1\n");
+            VF11 = texFetchScalar4(d_tables, tables_tex, 0);
             VF00 = VF11;
             VF00.y = - VF00.y; //invert both force components
             VF00.z = - VF00.z;
@@ -184,18 +191,20 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
             VF10 = VF11;
             VF10.z = - VF10.z; //invert F_y
             }
-        else if (value_i == - 1 && value_j > -1 && value_j < (int) m_table_height - 1)
+        else if (value_i == - 1 && value_j > -1 && value_j < (int) table_height - 1)
             {
-            VF10 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
-            VF11 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
+            //printf("Case 2\n");
+            VF10 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
+            VF11 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
             VF00 = VF10;
             VF00.y = - VF00.y; //invert F_x
             VF01 = VF11;
             VF01.y = - VF01.y;//invert F_x
             }
-        else if (value_i == -1 && value_j == (int) m_table_height - 1)
+        else if (value_i == -1 && value_j == (int) table_height - 1)
             {
-            VF10 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
+            //printf("Case 3\n");
+            VF10 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
             VF00 = VF10;
             VF00.y = - VF00.y; //invert F_x
             VF01 = VF00;
@@ -203,18 +212,20 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
             VF11 = VF10;
             VF11.z = - VF11.z; //invert F_y
             }
-        else if (value_i > -1 && value_i < (int) m_table_width - 1 && value_j == (int) m_table_height - 1)
+        else if (value_i > -1 && value_i < (int) table_width - 1 && value_j == (int) table_height - 1)
             {
-            VF00 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i);
-            VF10 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
+            //printf("Case 4\n");
+            VF00 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i);
+            VF10 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
             VF01 = VF00;
             VF01.z = - VF01.z;
             VF11 = VF10;
             VF11.z = - VF11.z;
             }
-        else if (value_i == (int) m_table_width - 1 && value_j == (int) m_table_height - 1)
+        else if (value_i == (int) table_width - 1 && value_j == (int) table_height - 1)
             {
-            VF00 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i);
+            //printf("Case 5\n");
+            VF00 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i);
             VF10 = VF00;
             VF10.y = - VF10.y; //reflect F_x
             VF01 = VF00;
@@ -222,18 +233,20 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
             VF11 = VF01;
             VF11.y = - VF11.y;
             }
-        else if (value_i == (int) m_table_width - 1 && value_j > -1 && value_j < (int) m_table_height - 1)
+        else if (value_i == (int) table_width - 1 && value_j > -1 && value_j < (int) table_height - 1)
             {
-            VF00 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i);
-            VF01 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
+            //printf("Case 6\n");
+            VF00 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i);
+            VF01 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
             VF10 = VF00;
             VF10.y = - VF10.y;
             VF11 = VF01;
             VF11.y = - VF11.y;
             }
-        else if (value_i == (int) m_table_width - 1 && value_j == -1)
+        else if (value_i == (int) table_width - 1 && value_j == -1)
             {
-            VF01 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
+            //printf("Case 7\n");
+            VF01 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
             VF00 = VF01;
             VF00.z = - VF00.z;
             VF10 = VF00;
@@ -241,10 +254,11 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
             VF11 = VF01;
             VF11.y = - VF11.y;
             }
-        else if (value_i > -1 && value_i < (int) m_table_width - 1 && value_j == -1)
+        else if (value_i > -1 && value_i < (int) table_width - 1 && value_j == -1)
             {
-            VF01 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
-            VF11 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
+            //printf("Case 8\n");
+            VF01 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
+            VF11 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
             VF00 = VF01;
             VF00.z = - VF00.z;
             VF10 = VF11;
@@ -252,10 +266,11 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
             }
         else
             {
-            VF00 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i);
-            VF01 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
-            VF10 = texFetchScalar3(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
-            VF11 = texFetchScalar3(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
+            //printf("Case 9\n");
+            VF00 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i);
+            VF01 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i);
+            VF10 = texFetchScalar4(d_tables, tables_tex, value_j*tables_pitch + value_i + 1);
+            VF11 = texFetchScalar4(d_tables, tables_tex, (value_j + 1)*tables_pitch + value_i + 1);
             }
 
         // compute the bilinear interpolation coefficient
@@ -263,9 +278,9 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
         Scalar f2 = value_f2 - Scalar(value_j);
         // interpolate to get V and F;
         //Bilinear interpolation:
-        Scalar3 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
+        Scalar4 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
 
-        VF = restoreForceDirection(VF, dx);
+        VF = d_restoreForceDirection(VF, dx);
         // convert to standard variables used by the other pair computes in HOOMD-blue
         Scalar pair_eng = VF.x;
         Scalar Fx_div2 = Scalar(0.5)*VF.y;
@@ -275,12 +290,12 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
 
         // compute the virial
         //Scalar forcemag_div2r = Scalar(0.5) * forcemag_divr;
-        virialxxi += Fx_div2*dx.x;
-        virialxyi += Fx_div2*dx.y;
-        virialxzi += Fx_div2*dx.z;
-        virialyyi += Fy_div2*dx.y;
-        virialyzi += Fy_div2*dx.z;
-        virialzzi += Fz_div2*dx.z;
+        virialxx += Fx_div2*dx.x;
+        virialxy += Fx_div2*dx.y;
+        virialxz += Fx_div2*dx.z;
+        virialyy += Fy_div2*dx.y;
+        virialyz += Fy_div2*dx.z;
+        virialzz += Fz_div2*dx.z;
         // add the force, potential energy and virial to the particle i
         force.x += VF.y;
         force.y += VF.z;
@@ -288,11 +303,13 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
         }
 
 
-
+    //printf("Write force\n");
     // potential energy per particle must be halved
     force.w *= Scalar(0.5);
     // now that the force calculation is complete, write out the result
     d_force[idx] = force;
+
+    //printf("write virial\n");
     d_virial[0*virial_pitch+idx] = virialxx;
     d_virial[1*virial_pitch+idx] = virialxy;
     d_virial[2*virial_pitch+idx] = virialxz;
@@ -324,19 +341,19 @@ cudaError_t gpu_compute_table2D_forces(Scalar4* d_force,
                                      const unsigned int N,
                                      const Scalar4 *d_pos,
                                      const BoxDim& box,
-                                     const Scalar2 *d_tables,
+                                     const Scalar4 *d_tables,
                                      const unsigned int tables_pitch,
-                                     const Scalar2 d_params,
+                                     const Scalar2 *d_params,
                                      const unsigned int table_width,
+                                     const unsigned int table_height,
                                      const unsigned int block_size,
                                      const unsigned int compute_capability,
                                      const unsigned int max_tex1d_width)
     {
-    assert(d_params);
     assert(d_tables);
     assert(table_width > 1);
     assert(table_height > 1);
-
+    //printf("Entering table2D_forces");
 
     if (compute_capability < 350)
         {
@@ -348,7 +365,7 @@ cudaError_t gpu_compute_table2D_forces(Scalar4* d_force,
         if (max_block_size == UINT_MAX)
             {
             cudaFuncAttributes attr;
-            cudaFuncGetAttributes(&attr, gpu_compute_table_forces_kernel<0>);
+            cudaFuncGetAttributes(&attr, gpu_compute_table2D_forces_kernel);
             max_block_size = attr.maxThreadsPerBlock;
             }
 
@@ -358,7 +375,8 @@ cudaError_t gpu_compute_table2D_forces(Scalar4* d_force,
         dim3 grid( N / run_block_size + 1, 1, 1);
         dim3 threads(run_block_size, 1, 1);
 
-        gpu_compute_table_forces_kernel<0><<< grid, threads >>>(d_force,
+        //printf("before running table2D_forces_kernel");
+        gpu_compute_table2D_forces_kernel<<<grid, threads>>>(d_force,
                                                                 d_virial,
                                                                 virial_pitch,
                                                                 N,

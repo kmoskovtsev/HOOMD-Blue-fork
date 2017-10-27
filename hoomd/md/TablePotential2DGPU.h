@@ -45,7 +45,7 @@ class TablePotential2DGPU : public TablePotential2D
         */
         virtual void setAutotunerParams(bool enable, unsigned int period)
             {
-            TablePotential::setAutotunerParams(enable, period);
+            TablePotential2D::setAutotunerParams(enable, period);
             m_tuner->setPeriod(period);
             m_tuner->setEnabled(enable);
             }

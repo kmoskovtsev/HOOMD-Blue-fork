@@ -85,6 +85,7 @@
 #include "TableAngleForceComputeGPU.h"
 #include "TableDihedralForceComputeGPU.h"
 #include "TablePotentialGPU.h"
+#include "TablePotential2DGPU.h"
 #include "TwoStepBDGPU.h"
 #include "TwoStepBerendsenGPU.h"
 #include "TwoStepLangevinGPU.h"
@@ -281,6 +282,7 @@ PYBIND11_PLUGIN(_md)
     export_PotentialSpecialPairGPU<PotentialSpecialPairLJGPU, PotentialSpecialPairLJ>(m, "PotentialSpecialPairLJGPU");
     export_BondTablePotentialGPU(m);
     export_TablePotentialGPU(m);
+    export_TablePotential2DGPU(m);
     export_HarmonicAngleForceComputeGPU(m);
     export_TableAngleForceComputeGPU(m);
     export_HarmonicDihedralForceComputeGPU(m);

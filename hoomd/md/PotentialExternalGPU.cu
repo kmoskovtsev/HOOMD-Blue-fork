@@ -6,6 +6,7 @@
 #include "PotentialExternalGPU.cuh"
 #include "EvaluatorWalls.h"
 #include "EvaluatorExternalPeriodic.h"
+#include "EvaluatorExternalPeriodicCos.h"
 #include "EvaluatorExternalElectricField.h"
 #include "EvaluatorPairLJ.h"
 #include "EvaluatorPairGauss.h"
@@ -18,6 +19,8 @@
 //Instantiate external evaluator templates
 //! Evaluator for External Periodic potentials.
 template cudaError_t gpu_cpef<EvaluatorExternalPeriodic>(const external_potential_args_t& external_potential_args, const typename EvaluatorExternalPeriodic::param_type *d_params, const typename EvaluatorExternalPeriodic::field_type *d_field);
+//! Evaluator for External Periodic Cos potentials.
+template cudaError_t gpu_cpef<EvaluatorExternalPeriodicCos>(const external_potential_args_t& external_potential_args, const typename EvaluatorExternalPeriodicCos::param_type *d_params, const typename EvaluatorExternalPeriodicCos::field_type *d_field);
 //! Evaluator for electric fields
 template cudaError_t gpu_cpef<EvaluatorExternalElectricField>(const external_potential_args_t& external_potential_args, const typename EvaluatorExternalElectricField::param_type *d_params, const typename EvaluatorExternalElectricField::field_type *d_field);
 //! Evaluator for Lennard-Jones pair potential.

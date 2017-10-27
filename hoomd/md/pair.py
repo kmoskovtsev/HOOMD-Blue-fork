@@ -1269,12 +1269,12 @@ class table2D(force._force):
 
 
         # create the c++ mirror class
-        #if not hoomd.context.exec_conf.isCUDAEnabled():
-        self.cpp_force = _md.TablePotential2D(hoomd.context.current.system_definition, int(width), int(height), self.name);
-        #else:
-        #    self.nlist.cpp_nlist.setStorageMode(_md.NeighborList.storageMode.full);
-        #    self.cpp_force = _md.TablePotentialGPU(hoomd.context.current.system_definition, self.nlist.cpp_nlist, int(width), self.name);
-
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_force = _md.TablePotential2D(hoomd.context.current.system_definition, 
+                                                  int(width), int(height), self.name);
+        else:
+            self.cpp_force = _md.TablePotential2DGPU(hoomd.context.current.system_definition, 
+                                                  int(width), int(height), self.name);
         hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
 
         # stash the width for later use

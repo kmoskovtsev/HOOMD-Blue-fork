@@ -87,7 +87,7 @@ class TablePotential2D : public ForceCompute
         unsigned int m_table_width;                 //!< Width of the tables in memory
         unsigned int m_table_height;                 //!< Height of the tables in memory
         unsigned int m_ntypes;                      //!< Store the number of particle types
-        GPUArray<Scalar3> m_tables;                  //!< Stored V and F tables
+        GPUArray<Scalar4> m_tables;                  //!< Stored V and F tables
         GPUArray<Scalar2> m_params;                 //!< Parameters stored for each table
         std::string m_log_name;                     //!< Cached log name
 

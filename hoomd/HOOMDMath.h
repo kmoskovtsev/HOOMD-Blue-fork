@@ -257,6 +257,93 @@ HOSTDEVICE inline Scalar dot(const Scalar3& a, const Scalar3& b)
     return a.x*b.x + a.y*b.y + a.z*b.z;
     }
 
+//! Scalar4 unary -
+HOSTDEVICE inline Scalar4 operator- (const Scalar4 &a)
+    {
+    return make_scalar4(-a.x,
+                        -a.y,
+                        -a.z,
+                        -a.w);
+    }
+//! Scalar - vector multiplcation
+HOSTDEVICE inline Scalar4 operator* (const Scalar &a, const Scalar4 &b)
+    {
+    return make_scalar4(a*b.x,
+                        a*b.y,
+                        a*b.z,
+                        a*b.w);
+    }
+//! Scalar - vector multiplcation
+HOSTDEVICE inline Scalar4 operator* (const Scalar4 &a, const Scalar &b)
+    {
+    return make_scalar4(a.x*b,
+                        a.y*b,
+                        a.z*b,
+                        a.w*b);
+    }
+//! Vector - scalar multiplcation
+HOSTDEVICE inline Scalar4& operator*= (Scalar4 &a, const Scalar &b)
+    {
+    a.x *= b;
+    a.y *= b;
+    a.z *= b;
+    a.w *= b;
+    return a;
+    }
+//! Vector - scalar division
+HOSTDEVICE inline Scalar4 operator/ (const Scalar4 &a, const Scalar &b)
+    {
+    return make_scalar4(a.x/b,
+                        a.y/b,
+                        a.z/b,
+                        a.w/b);
+    }
+//! Vector - scalar division
+HOSTDEVICE inline Scalar4 operator/ (const Scalar &a, const Scalar4 &b)
+    {
+    return make_scalar4(a/b.x,
+                        a/b.y,
+                        a/b.z,
+                        a/b.w);
+    }
+//! Vector addition
+HOSTDEVICE inline Scalar4 operator+ (const Scalar4 &a, const Scalar4 &b)
+    {
+    return make_scalar4(a.x + b.x,
+                        a.y + b.y,
+                        a.z + b.z,
+                        a.w + b.w);
+    }
+//! Vector addition
+HOSTDEVICE inline Scalar4& operator+= (Scalar4 &a, const Scalar4 &b)
+    {
+    a.x += b.x;
+    a.y += b.y;
+    a.z += b.z;
+    a.w += b.w;
+    return a;
+    }
+
+
+//! Vector subtraction
+HOSTDEVICE inline Scalar4 operator- (const Scalar4 &a, const Scalar4 &b)
+    {
+    return make_scalar4(a.x - b.x,
+                        a.y - b.y,
+                        a.z - b.z,
+                        a.w - b.w);
+    }
+//! Vector subtraction
+HOSTDEVICE inline Scalar4& operator-= (Scalar4 &a, const Scalar4 &b)
+    {
+    a.x -= b.x;
+    a.y -= b.y;
+    a.z -= b.z;
+    a.w -= b.w;
+    return a;
+    }
+
+
 //! Export relevant hoomd math functions to python
 #ifndef NVCC
 void export_hoomd_math_functions(pybind11::module& m);

@@ -16,13 +16,13 @@
 #define __TABLEPOTENTIAL2DGPU_CUH__
 
 //! Kernel driver that computes table forces on the GPU for TablePotentialGPU
-cudaError_t gpu_compute_table_forces(Scalar4* d_force,
+cudaError_t gpu_compute_table2D_forces(Scalar4* d_force,
                                      Scalar* d_virial,
                                      const unsigned int virial_pitch,
                                      const unsigned int N,
                                      const Scalar4 *d_pos,
                                      const BoxDim& box,
-                                     const Scalar3 *d_tables,
+                                     const Scalar4 *d_tables,
                                      const unsigned int tables_pitch,
                                      const Scalar2 *d_params,
                                      const unsigned int table_width,

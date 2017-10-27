@@ -56,13 +56,13 @@ void TablePotential2DGPU::computeForces(unsigned int timestep)
     BoxDim box = m_pdata->getBox();
 
     // access the table data
-    ArrayHandle<Scalar3> d_tables(m_tables, access_location::device, access_mode::read);
+    ArrayHandle<Scalar4> d_tables(m_tables, access_location::device, access_mode::read);
     ArrayHandle<Scalar2> d_params(m_params, access_location::device, access_mode::read);
 
     ArrayHandle<Scalar4> d_force(m_force,access_location::device,access_mode::overwrite);
     ArrayHandle<Scalar> d_virial(m_virial,access_location::device,access_mode::overwrite);
 
-    unsigned int tables_pitch = d_tables.getPitch();
+    unsigned int tables_pitch = m_tables.getPitch();
 
     // run the kernel on all GPUs in parallel
     m_tuner->begin();
@@ -74,7 +74,7 @@ void TablePotential2DGPU::computeForces(unsigned int timestep)
                              box,
                              d_tables.data,
                              tables_pitch,
-                             d_params.data[0],
+                             d_params.data,
                              m_table_width,
                              m_table_height,
                              m_tuner->getParam(),
@@ -88,7 +88,7 @@ void TablePotential2DGPU::computeForces(unsigned int timestep)
     if (m_prof) m_prof->pop(m_exec_conf);
     }
 
-void export_TablePotentialGPU2D(py::module& m)
+void export_TablePotential2DGPU(py::module& m)
     {
     py::class_<TablePotential2DGPU, std::shared_ptr<TablePotential2DGPU> >(m, "TablePotential2DGPU", py::base<TablePotential2D>())
         .def(py::init< std::shared_ptr<SystemDefinition>,

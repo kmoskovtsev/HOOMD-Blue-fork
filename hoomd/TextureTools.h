@@ -108,6 +108,8 @@ __device__ inline Scalar4 texFetchScalar4(const Scalar4 *ptr, texture<Scalar4, 1
     \param ii i-Index at which to look.
     \param jj j-index at which to look.
 */
+
+/*
 __device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1> tex_ref, )
         unsigned int ii)
     {
@@ -118,6 +120,7 @@ __device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1
     //return tex2D(tex_ref, ii, jj);
     #endif
     }
+*/
 
 
 // Double precision block:
@@ -185,8 +188,7 @@ __device__ inline Scalar4 texFetchScalar4(const Scalar4 *ptr, texture<int4, 1> t
                         __hiloint2double(part1.w, part1.z),
                         __hiloint2double(part2.y, part2.x),
                         __hiloint2double(part2.w, part2.z));
-
-
+    }
 
 //! Fetch a Scalar3 value from 2D texture memory.
 /*! This function should be called whenever a CUDA kernel wants to retrieve a
@@ -197,13 +199,15 @@ __device__ inline Scalar4 texFetchScalar4(const Scalar4 *ptr, texture<int4, 1> t
     \param ii i-Index at which to look.
     \param jj j-index at which to look.
 */
-__device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1> tex_ref,
-        unsigned int ii)
+
+/*
+__device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1> tex_ref, unsigned int ii)
     {
     unsigned int idx = 2*ii;
     #if __CUDA_ARCH__ >= 350
-    int3 part1 = __ldg(((int3 *)ptr) + idx);
-    int3 part2 = __ldg(((int3 *)ptr) + idx1 + 1);
+    int3* intp = (
+    int3 part1 = __ldg(ptr + idx);
+    int3 part2 = __ldg(ptr + idx + 1);
     #else
     throw std::runtime_error("CUDA Compute below 3.5 is not supported");
     //int3 part1 = tex2D(tex_ref, ii, idx2);
@@ -215,7 +219,7 @@ __device__ inline Scalar3 texFetchScalar3(const Scalar3 *ptr, texture<Scalar3, 1
 
     }
 
-}
+*/
 
 
 
