@@ -348,3 +348,10 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100)):
             g += pair_correlation(pos_frame, box, n_bins = n_bins)
     g /= n_frames
     return g
+    
+    
+ def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma"):
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2), origin='lower')
+    ax.scatter(0,0, c='r', marker = '+')
+    return fig, ax
