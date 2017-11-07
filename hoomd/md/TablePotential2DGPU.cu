@@ -10,6 +10,7 @@
 
 #include <assert.h>
 
+#include <cmath>
 /*! \file TablePotential2DGPU.cu
     \brief Defines GPU kernel code for calculating the table pair forces. Used by TablePotential2DGPU.
 */
@@ -30,18 +31,9 @@ scalar2_tex_t params_tex;
 __device__ Scalar3 d_Scalar3Abs(Scalar3 r)
     {
     Scalar3 res = r;
-    if (res.x < 0)
-        {
-        res.x = - res.x;
-        }
-    if (res.y < 0)
-        {
-       res.y = - res.y;
-        }
-    if (res.z < 0)
-        {
-        res.z = - res.z;
-        }
+    res.x = std::abs(r.x);
+    res.y = std::abs(r.y);
+    res.z = std::abs(r.z);
     return res;
     }
 
@@ -51,6 +43,7 @@ __device__ Scalar3 d_Scalar3Abs(Scalar3 r)
     VF = (V, F_x, F_y)
     dx = vector pointing from particle i to particle k
 */
+
 __device__ Scalar4 d_restoreForceDirection(Scalar4 VF, Scalar3 dx)
     {
     if (dx.x < 0)
@@ -280,7 +273,7 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
         //Bilinear interpolation:
         Scalar4 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
 
-        VF = d_restoreForceDirection(VF, dx);
+        //VF = d_restoreForceDirection(VF, dx);
         // convert to standard variables used by the other pair computes in HOOMD-blue
         Scalar pair_eng = VF.x;
         Scalar Fx_div2 = Scalar(0.5)*VF.y;
@@ -369,8 +362,8 @@ cudaError_t gpu_compute_table2D_forces(Scalar4* d_force,
             max_block_size = attr.maxThreadsPerBlock;
             }
 
-        unsigned int run_block_size = min(block_size, max_block_size);
-
+        //unsigned int run_block_size = min(block_size, max_block_size);
+        unsigned int run_block_size = 128;
         // setup the grid to run the kernel
         dim3 grid( N / run_block_size + 1, 1, 1);
         dim3 threads(run_block_size, 1, 1);
