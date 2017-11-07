@@ -339,7 +339,7 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
         
     g = np.zeros(n_bins)
     with gsd.fl.GSDFile(filename, 'rb') as f_gsd:
-        n_frames_total = f.nframes
+        n_frames_total = f_gsd.nframes
         if frames[0] > n_frames_total or frames[1] > n_frames_total:
             raise ValueError('frames beyond n_frames_total')
         #translate negative indices into positive domain:
