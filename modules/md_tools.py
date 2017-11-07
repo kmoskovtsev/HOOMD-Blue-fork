@@ -2,6 +2,7 @@ from matplotlib.animation import FuncAnimation
 import gsd.fl
 import matplotlib.pyplot as plt
 import numpy as np
+from hoomd.data import boxdim
 
 def __init__():
     """
@@ -323,7 +324,7 @@ def pair_correlation(pos, box, n_bins = (100, 100)):
     g /= pos.shape[0]
     return g
 
-def pair_correlation_from_gsd(filename, n_bins = (100, 100)):
+def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
     """ Calculate pair correlation function, averaged over all frames in a gsd file.
         \param filename: name of the gsd file
         \param n_bins: tuple of size 2, numbers of bins in x and y direction for correlation function, both even
@@ -338,20 +339,31 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100)):
         
     g = np.zeros(n_bins)
     with gsd.fl.GSDFile(filename, 'rb') as f_gsd:
-        n_frames = f_gsd.nframes
+        n_frames_total = f.nframes
+        if frames[0] > n_frames_total or frames[1] > n_frames_total:
+            raise ValueError('frames beyond n_frames_total')
+        #translate negative indices into positive domain:
+        abs_frames = (frames[0] -(frames[0]//n_frames_total)*n_frames_total, \
+                     frames[1] -(frames[1]//n_frames_total)*n_frames_total)
+        if abs_frames[0] > abs_frames[1]:
+            raise ValueError('frames[0] must be to the left from frames[1]')
+        all_frames = np.arange(0, n_frames_total, 1)
+        selected_frames = all_frames[abs_frames[0]:abs_frames[1] + 1]
+        n_frames = abs_frames[1] - abs_frames[0] + 1
+        
         n_p = f_gsd.read_chunk(frame=0, name='particles/N')
         box_array = f_gsd.read_chunk(frame=0, name='configuration/box')
-        box = hoomd.data.boxdim(*box_array[0:3])
+        box = boxdim(*box_array[0:3])
         pos = np.zeros((n_frames, n_p[0], 2))
         for j_frame in range(n_frames):
-            pos_frame = f_gsd.read_chunk(frame=j_frame, name='particles/position')
+            pos_frame = f_gsd.read_chunk(frame=selected_frames[j_frame], name='particles/position')
             g += pair_correlation(pos_frame, box, n_bins = n_bins)
     g /= n_frames
     return g
     
     
- def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma"):
+def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none'):
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2), origin='lower')
+    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2), origin='lower', interpolation = interpolation)
     ax.scatter(0,0, c='r', marker = '+')
     return fig, ax
