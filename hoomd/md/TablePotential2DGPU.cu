@@ -273,7 +273,7 @@ __global__ void gpu_compute_table2D_forces_kernel(Scalar4* d_force,
         //Bilinear interpolation:
         Scalar4 VF = VF00 + f1*(VF10 - VF00) + f2*(VF01 - VF00) + f1*f2*(VF00 + VF11 - VF01 - VF10);
 
-        //VF = d_restoreForceDirection(VF, dx);
+        VF = d_restoreForceDirection(VF, dx);
         // convert to standard variables used by the other pair computes in HOOMD-blue
         Scalar pair_eng = VF.x;
         Scalar Fx_div2 = Scalar(0.5)*VF.y;
