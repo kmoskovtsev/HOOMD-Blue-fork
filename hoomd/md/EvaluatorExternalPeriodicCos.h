@@ -56,7 +56,7 @@ class EvaluatorExternalPeriodicCos
     public:
 
         //! type of parameters this external potential accepts
-        typedef Scalar3 param_type;
+        typedef Scalar4 param_type;
         typedef struct field{}field_type;
 
         //! Constructs the constraint evaluator
@@ -71,6 +71,7 @@ class EvaluatorExternalPeriodicCos
             m_index=  SCALARASINT(params.x);
             m_orderParameter = params.y;
             m_periodicity =SCALARASINT(params.z);
+            m_phase = params.w;
             }
 
         //! External Periodic doesn't need diameters
@@ -134,7 +135,7 @@ class EvaluatorExternalPeriodicCos
                                                       a2.x*a3.y-a2.y*a3.x)/V_box;
 
             Scalar3 q = b*m_periodicity;
-            Scalar arg = dot(m_pos,q);
+            Scalar arg = dot(m_pos,q) + m_phase;
 
             F = m_orderParameter*fast::sin(arg)*q;
             energy = m_orderParameter*fast::cos(arg);
@@ -156,7 +157,8 @@ class EvaluatorExternalPeriodicCos
         BoxDim m_box;                 //!< box dimensions
         unsigned int m_index;         //!< cartesian index of direction along which the lammellae should be orientied
         Scalar m_orderParameter;      //!< ordering parameter
-        unsigned int m_periodicity;   //!< number of lamellae of each type
+        unsigned int m_periodicity;   //!< Number of periods per unit cell
+        Scalar m_phase;
    };
 
 

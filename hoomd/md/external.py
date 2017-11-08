@@ -320,19 +320,19 @@ class periodic_cos(_external_force):
 
     .. math::
 
-       V(\vec{r}) = A * \cos\left(p \vec{b}_i\cdot\vec{r}\right)
+       V(\vec{r}) = A * \cos\left(p \vec{b}_i\cdot\vec{r} + phi\right)
 
     where :math:`A` is the ordering parameter, :math:`\vec{b}_i` is the reciprocal lattice vector direction
-    :math:`i=0..2`, :math:`p` the periodicity.
+    :math:`i=0..2`, :math:`p` the periodicity, `phi` is the phase shift.
     The modulation is one-dimensional. It extends along the lattice vector :math:`\mathbf{a}_i` of the
     simulation cell.
 
     Examples::
 
         # Apply a periodic composition modulation along the first lattice vector
-        periodic = external.periodic()
-        periodic.force_coeff.set('A', A=1.0, i=0, p=3)
-        periodic.force_coeff.set('B', A=-1.0, i=0, p=3)
+        periodic = external.periodic_cos()
+        periodic.force_coeff.set('A', A=1.0, i=0, p=3, phi=np.pi/2)
+        periodic.force_coeff.set('B', A=-1.0, i=0, p=3, phi=0)
     """
     def __init__(self, name=""):
         hoomd.util.print_status_line();
@@ -349,14 +349,15 @@ class periodic_cos(_external_force):
         hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
 
         # setup the coefficient options
-        self.required_coeffs = ['A','i','p'];
+        self.required_coeffs = ['A','i','p','phi'];
 
     def process_coeff(self, coeff):
         A = coeff['A'];
         i = coeff['i'];
         p = coeff['p'];
+        phi = coeff['phi']
 
-        return _hoomd.make_scalar3(_hoomd.int_as_scalar(i), A, _hoomd.int_as_scalar(p));
+        return _hoomd.make_scalar4(_hoomd.int_as_scalar(i), A, _hoomd.int_as_scalar(p), phi);
 
 
 

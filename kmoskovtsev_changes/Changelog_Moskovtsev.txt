@@ -1,0 +1,38 @@
+To use the latest gcc on Activation machine, issue
+scl enable devtoolset-2 bash
+
+
+
+
+===============================================================================
+<--- 2D Ewald: --->
+Add TablePotential2D
+Register TablePotential2D in md-module
+Add table2D in hoomd/md/pair.py
+
+<--- TablePotential2DGPU --->
+Create TablePotential2DGPU h, cc, cu, cuh
+Add operations for Scalar4 type in HOOMDMath.h
+Change tables from Scalar3 to Scalar4 type to make it compatible with double
+precision calculations
+Register TablePotential2DGPU in md/module-md.cc
+
+
+
+===============================================================================
+<--- Gaussian noise in Langevin --->
+TwoStepLangevin.cc: replace saru(-1, 1) by gaussian_rng(saru, 1)
+TwoStepLangevinGPU.cu
+
+===============================================================================
+<--- PeriodicCos --->
+Make another periodic potential which is a simple cos, instead of tanh(...cos(...)).
+In md/external.: create class periodic_cos, which calls _md.PotentialExternalPeriodicCos;
+_md.PotentialExternalPeriodicCos is typedefed in md/AllExternalPotentials.h as
+PotentialExternal<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCos;
+
+EvaluatorExternalPeriodicCos.h is created based on EvaluatorExternalPeriodic.h
+
+add registration lines in module-md.cc
+
+Register in ExternalPotentialGPU.cu
