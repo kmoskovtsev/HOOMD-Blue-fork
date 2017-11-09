@@ -212,7 +212,7 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
     return fig, ax, animation
     
     
-def plot_DxDy(Dx, Dy, gamma_list, timestamp, text_list = [], text_pos = 'c'):
+def plot_DxDy(Dx, Dy, gamma_list, timestamp, text_list = [], text_pos = 'c', folder = ''):
     """Create two-panel plot for Dx, Dy vs Gamma
     text_list = list of strings that will be displayed on the plot
     text_pos = 'l', 'c', or 'r' for left, center, and right alignment of the text
@@ -251,8 +251,10 @@ def plot_DxDy(Dx, Dy, gamma_list, timestamp, text_list = [], text_pos = 'c'):
         ax1.text(text_x, text_y, text_list)
     else:
         raise TypeError('text_list must be a list of strings or a string')
-    
-    fig.savefig(timestamp + '_diff.png')
+    if folder != '':
+        if folder[-1] != '/':
+            folder = folder + '/'
+    fig.savefig(folder + timestamp + '_diff.png')
     return fig, ax1, ax2
     
     
