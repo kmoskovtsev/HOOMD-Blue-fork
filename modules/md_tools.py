@@ -63,7 +63,7 @@ def get_file_list(folder_path):
 
     
     
-def diffusion_from_gsd(folder_path, center_fixed = True):
+def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
     """
     Calculate diffusion coefficients vs Gamma from gsd files located in folder_path.
     The folder must have list.txt that has the following structure:
@@ -99,16 +99,18 @@ def diffusion_from_gsd(folder_path, center_fixed = True):
             n_frames = f.nframes
             box = f.read_chunk(frame=0, name='configuration/box')
             half_frames = int(n_frames/2) - 1 #sligtly less than half to avoid out of bound i
+            if useframes < 1 or useframes > half_frames:
+                useframes = half_frames
             t_step = f.read_chunk(frame=0, name='configuration/step')
             n_p = f.read_chunk(frame=0, name='particles/N')
             if i == 0: #create square-average displacement once
-                x_sq_av = np.zeros((half_frames, len(f_list)))
-                y_sq_av = np.zeros((half_frames, len(f_list)))
-            for t_origin in range(half_frames):
+                x_sq_av = np.zeros((useframes, len(f_list)))
+                y_sq_av = np.zeros((useframes, len(f_list)))
+            for t_origin in range(n_frames - useframes - 1):
                 pos_0 = f.read_chunk(frame=t_origin, name='particles/position')
                 mean_pos_0 = np.mean(pos_0, axis = 0)
                 pos = pos_0
-                for j_frame in range(half_frames):
+                for j_frame in range(useframes):
                     pos_m1 = pos
                     pos = f.read_chunk(frame=j_frame + t_origin, name='particles/position') - pos_0
                     pos = correct_jumps(pos, pos_m1, box[0], box[1])
@@ -117,12 +119,12 @@ def diffusion_from_gsd(folder_path, center_fixed = True):
                     
                     x_sq_av[j_frame, i] += np.mean(pos[:,0]**2)
                     y_sq_av[j_frame, i] += np.mean(pos[:,1]**2)
-            x_sq_av[:, i] /= half_frames
-            y_sq_av[:, i] /= half_frames
+            x_sq_av[:, i] /= (n_frames - useframes - 1)
+            y_sq_av[:, i] /= (n_frames - useframes - 1)
             # OLS estimate for beta_x[0] + beta_x[1]*t = <|x_i(t) - x_i(0)|^2>
-            a = np.ones((half_frames, 2)) # matrix a = ones(half_frames) | (0; dt; 2dt; 3dt; ...)
-            a[:,1] = dt_list[i]*np.cumsum(np.ones(half_frames), axis = 0) - dt_list[i]
-            b_cutoff = int(n_frames/10) #cutoff to get only linear part of x_sq_av, makes results a bit more clean
+            a = np.ones((useframes, 2)) # matrix a = ones(half_frames) | (0; dt; 2dt; 3dt; ...)
+            a[:,1] = dt_list[i]*np.cumsum(np.ones(useframes), axis = 0) - dt_list[i]
+            b_cutoff = int(useframes/10) #cutoff to get only linear part of x_sq_av, makes results a bit more clean
             beta_x = np.linalg.lstsq(a[b_cutoff:, :], x_sq_av[b_cutoff:,i], rcond=-1)
             beta_y = np.linalg.lstsq(a[b_cutoff:, :], y_sq_av[b_cutoff:,i], rcond=-1)
             D_x_list[i] = beta_x[0][1]/4
