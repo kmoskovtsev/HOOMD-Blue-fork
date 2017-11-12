@@ -73,10 +73,10 @@ def V_short(mesh_x, mesh_y, charge, eta):
     nx, ny = (1, 1) # arbitrary starting point
     accuracy_x = 1
     accuracy_y = 1
-    while accuracy_x > 1e-15 and nx < 1000:
+    while accuracy_x > 1e-25 and nx < 1000:
         nx += 1
         accuracy_x = 1 - erf(0.5*(nx - 0.5)*lx/eta)
-    while accuracy_y > 1e-15 and ny < 1000:
+    while accuracy_y > 1e-25 and ny < 1000:
         ny += 1
         accuracy_y = 1 - erf(0.5*(ny - 0.5)*ly/eta)
     
@@ -118,10 +118,10 @@ def V_long(mesh_x, mesh_y, charge, eta):
     n1, n2 = 2, 2 # arbitrary starting point
     accuracy_x = 1
     accuracy_y = 1
-    while accuracy_x > 1e-15 and n1 < 1000:
+    while accuracy_x > 1e-25 and n1 < 1000:
         n1 += 1
         accuracy_x = 1 - erf(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
-    while accuracy_y > 1e-15 and n2 < 1000:
+    while accuracy_y > 1e-25 and n2 < 1000:
         n2 += 1
         accuracy_y = 1 - erf(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
     
@@ -171,10 +171,10 @@ def F_long(mesh_x, mesh_y, charge, eta):
     n1, n2 = 2, 2 # arbitrary starting point
     accuracy_x = 1
     accuracy_y = 1
-    while accuracy_x > 1e-15 and n1 < 1000:
+    while accuracy_x > 1e-25 and n1 < 1000:
         n1 += 1
         accuracy_x = 1 - erf(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
-    while accuracy_y > 1e-15 and n2 < 1000:
+    while accuracy_y > 1e-25 and n2 < 1000:
         n2 += 1
         accuracy_y = 1 - erf(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
     
@@ -212,7 +212,7 @@ def F_s_ri(ri, mesh_x, mesh_y, eta):
     x_ri = mesh_x - ri[0]
     y_ri = mesh_y - ri[1]
     r_ri = r_from_ri(ri, mesh_x, mesh_y)
-    term1 = 2/np.sqrt(np.pi)*np.exp(-r_ri**2/4./eta**2)/r_ri**2
+    term1 = 1/(2*eta)*np.exp(-r_ri**2/4./eta**2)/r_ri**2
     term2 = (1 - erf(0.5*r_ri/eta))/r_ri**3
     return np.dstack(((term1 + term2)*x_ri, (term1 + term2)*y_ri))
 
@@ -237,10 +237,10 @@ def F_short(mesh_x, mesh_y, charge, eta):
     nx, ny = (1, 1) # arbitrary starting point
     accuracy_x = 1
     accuracy_y = 1
-    while accuracy_x > 1e-15 and nx < 1000:
+    while accuracy_x > 1e-25 and nx < 1000:
         nx += 1
         accuracy_x = max(1 - erf(0.5*(nx - 0.5)*lx/eta), np.exp(- 0.25*(nx - 0.5)**2*lx**2/eta**2))
-    while accuracy_y > 1e-15 and ny < 1000:
+    while accuracy_y > 1e-25 and ny < 1000:
         ny += 1
         accuracy_y = max(1 - erf(0.5*(ny - 0.5)*ly/eta), np.exp(- 0.25*(ny - 0.5)**2*ly**2/eta**2))
     
