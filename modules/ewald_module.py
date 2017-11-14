@@ -171,10 +171,10 @@ def F_long(mesh_x, mesh_y, charge, eta):
     n1, n2 = 2, 2 # arbitrary starting point
     accuracy_x = 1
     accuracy_y = 1
-    while accuracy_x > 1e-25 and n1 < 1000:
+    while accuracy_x > 1e-35 and n1 < 1000:
         n1 += 1
         accuracy_x = 1 - erf(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
-    while accuracy_y > 1e-25 and n2 < 1000:
+    while accuracy_y > 1e-35 and n2 < 1000:
         n2 += 1
         accuracy_y = 1 - erf(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
     
