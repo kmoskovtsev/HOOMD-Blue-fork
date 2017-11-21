@@ -89,6 +89,7 @@ def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
     all arrays are ordered for right correspondence, e.g. D_x[i] <-> gamma_list[i]
     """
     f_list, gamma_list, T_list, dt_list = get_file_list(folder_path)
+    
     D_x_list = np.zeros(len(f_list))
     D_y_list = np.zeros(len(f_list))
     
@@ -125,7 +126,7 @@ def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
             y_sq_av[:, i] /= (n_frames - useframes - 1)
             # OLS estimate for beta_x[0] + beta_x[1]*t = <|x_i(t) - x_i(0)|^2>
             a = np.ones((useframes, 2)) # matrix a = ones(half_frames) | (0; dt; 2dt; 3dt; ...)
-            a[:,1] = dt_list[i]*np.cumsum(np.ones(useframes), axis = 0) - dt_list[i]
+            a[:,1] = t_step*dt_list[i]*np.cumsum(np.ones(useframes), axis = 0) - dt_list[i]
             b_cutoff = int(useframes/10) #cutoff to get only linear part of x_sq_av, makes results a bit more clean
             beta_x = np.linalg.lstsq(a[b_cutoff:, :], x_sq_av[b_cutoff:,i], rcond=-1)
             beta_y = np.linalg.lstsq(a[b_cutoff:, :], y_sq_av[b_cutoff:,i], rcond=-1)

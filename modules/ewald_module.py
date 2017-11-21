@@ -1,4 +1,4 @@
-from scipy.special import erf as erf
+from scipy.special import erfc as erfc
 import numpy as np
 import datetime
 import os
@@ -50,7 +50,7 @@ def r_from_ri(ri, mesh_x, mesh_y):
 
 def phi_s(r, eta):
     #short-range potential
-    return (1 - erf(r/2./eta))/r
+    return erfc(r/2./eta)/r
 
 def V_short(mesh_x, mesh_y, charge, eta):
     """ short_V(mesh_x, mesh_y, charge, width, height, eta)
@@ -75,10 +75,10 @@ def V_short(mesh_x, mesh_y, charge, eta):
     accuracy_y = 1
     while accuracy_x > 1e-25 and nx < 1000:
         nx += 1
-        accuracy_x = 1 - erf(0.5*(nx - 0.5)*lx/eta)
+        accuracy_x = erfc(0.5*(nx - 0.5)*lx/eta)
     while accuracy_y > 1e-25 and ny < 1000:
         ny += 1
-        accuracy_y = 1 - erf(0.5*(ny - 0.5)*ly/eta)
+        accuracy_y = erfc(0.5*(ny - 0.5)*ly/eta)
     
     accuracy = max(accuracy_x, accuracy_y)
     print("*** Short-Range Potential ***")
@@ -120,10 +120,10 @@ def V_long(mesh_x, mesh_y, charge, eta):
     accuracy_y = 1
     while accuracy_x > 1e-25 and n1 < 1000:
         n1 += 1
-        accuracy_x = 1 - erf(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
+        accuracy_x = erfc(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
     while accuracy_y > 1e-25 and n2 < 1000:
         n2 += 1
-        accuracy_y = 1 - erf(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
+        accuracy_y = erfc(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
     
     accuracy = max(accuracy_x, accuracy_y)
     print("*** Long-Range Potential ***")
@@ -139,7 +139,7 @@ def V_long(mesh_x, mesh_y, charge, eta):
             if not (i1 == 0 and i2 == 0):
                 k = i1*b1 + i2*b2
                 k_abs = np.sqrt(k[0]**2 + k[1]**2)
-                V += np.cos(k[0]*mesh_x + k[1]*mesh_y)*(1 - erf(k_abs*eta))/k_abs
+                V += np.cos(k[0]*mesh_x + k[1]*mesh_y)*erfc(k_abs*eta)/k_abs
     V *= 2*np.pi*charge**2/deta
     return V
     
@@ -173,10 +173,10 @@ def F_long(mesh_x, mesh_y, charge, eta):
     accuracy_y = 1
     while accuracy_x > 1e-35 and n1 < 1000:
         n1 += 1
-        accuracy_x = 1 - erf(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
+        accuracy_x = erfc(eta*n1*np.sqrt(b1[0]**2 + b1[1]**2))
     while accuracy_y > 1e-35 and n2 < 1000:
         n2 += 1
-        accuracy_y = 1 - erf(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
+        accuracy_y = erfc(eta*n2*np.sqrt(b2[0]**2 + b2[1]**2))
     
     accuracy = max(accuracy_x, accuracy_y)
     print("*** Long-Range Force ***")
@@ -189,7 +189,7 @@ def F_long(mesh_x, mesh_y, charge, eta):
             if not (i1 == 0 and i2 == 0):
                 k = i1*b1 + i2*b2
                 k_abs = np.sqrt(k[0]**2 + k[1]**2)
-                term1 = np.sin(k[0]*mesh_x + k[1]*mesh_y)*(1 - erf(k_abs*eta))/k_abs
+                term1 = np.sin(k[0]*mesh_x + k[1]*mesh_y)*erfc(k_abs*eta)/k_abs
                 F[:,:,0] += k[0]*term1
                 F[:,:,1] += k[1]*term1
     F *= 2*np.pi/det_a*charge**2
@@ -213,7 +213,7 @@ def F_s_ri(ri, mesh_x, mesh_y, eta):
     y_ri = mesh_y - ri[1]
     r_ri = r_from_ri(ri, mesh_x, mesh_y)
     term1 = 1/(2*eta)*np.exp(-r_ri**2/4./eta**2)/r_ri**2
-    term2 = (1 - erf(0.5*r_ri/eta))/r_ri**3
+    term2 = erfc(0.5*r_ri/eta)/r_ri**3
     return np.dstack(((term1 + term2)*x_ri, (term1 + term2)*y_ri))
 
 def F_short(mesh_x, mesh_y, charge, eta):
@@ -239,10 +239,10 @@ def F_short(mesh_x, mesh_y, charge, eta):
     accuracy_y = 1
     while accuracy_x > 1e-25 and nx < 1000:
         nx += 1
-        accuracy_x = max(1 - erf(0.5*(nx - 0.5)*lx/eta), np.exp(- 0.25*(nx - 0.5)**2*lx**2/eta**2))
+        accuracy_x = max(erfc(0.5*(nx - 0.5)*lx/eta), np.exp(- 0.25*(nx - 0.5)**2*lx**2/eta**2))
     while accuracy_y > 1e-25 and ny < 1000:
         ny += 1
-        accuracy_y = max(1 - erf(0.5*(ny - 0.5)*ly/eta), np.exp(- 0.25*(ny - 0.5)**2*ly**2/eta**2))
+        accuracy_y = max(erfc(0.5*(ny - 0.5)*ly/eta), np.exp(- 0.25*(ny - 0.5)**2*ly**2/eta**2))
     
     accuracy = max(accuracy_x, accuracy_y)
     print("*** Short-Range Force ***")
@@ -260,7 +260,7 @@ def F_short(mesh_x, mesh_y, charge, eta):
     return F
 
 
-def export_to_file(dir_path, mesh_x, mesh_y, V_tot, F_tot):
+def export_to_file(dir_path, mesh_x, mesh_y, V_tot, F_tot, filename = None):
     """
     export_to_file(dir_path, mesh_x, mesh_y, V_tot, F_tot)
         Export total potential and force to a file
@@ -271,10 +271,9 @@ def export_to_file(dir_path, mesh_x, mesh_y, V_tot, F_tot):
         listing the first row of mesh points starting with  j=0  (ry=h2/2) and
         i  going from  0  to (width - 1),
         then  proceeding to the row with  j=1 , etc.
+        filename is either provided through filename or generated based on current time.
     """
     height, width = mesh_x.shape
-    timestamp = datetime.datetime.strftime(datetime.datetime.now(), format="%Y%m%d-%H%M%S")
-
     
     if dir_path[0] != '/':
         raise ValueError("dir_path must be absolute, starting with '/'")
@@ -284,8 +283,12 @@ def export_to_file(dir_path, mesh_x, mesh_y, V_tot, F_tot):
         
     if not os.path.isdir(dir_path):
         os.mkdir(dir_path)
-    
-    f_name = timestamp + '_table.dat'
+        
+    if filename == None:
+        timestamp = datetime.datetime.strftime(datetime.datetime.now(), format="%Y%m%d-%H%M%S")
+        f_name = timestamp + '_table.dat'
+    else:
+        f_name = filename
     f = open(dir_path + f_name, 'w')
 
     f.write('# rx ry V Fx Fy\n')
