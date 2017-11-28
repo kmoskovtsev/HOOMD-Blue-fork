@@ -184,18 +184,9 @@ Scalar TablePotential2D::getLogValue(const std::string& quantity, unsigned int t
 Scalar3 Scalar3Abs(Scalar3 r)
     {
     Scalar3 res = r;
-    if (res.x < 0)
-        {
-            res.x = - res.x;
-        }
-    if (res.y < 0)
-        {
-            res.y = - res.y;
-        }
-    if (res.z < 0)
-        {
-            res.z = - res.z;
-        }
+    res.x =  std::abs(res.x);
+    res.y =  std::abs(res.y);
+    res.z =  std::abs(res.z);
     return res;
     }
 
