@@ -162,8 +162,41 @@ def gsd_trajectory(fpath, axis, periodic = False, center_fixed = True):
                 pos_frame -= np.mean(pos_frame, axis = 0) - mean_pos_0
             pos[j_frame, :] = pos_frame[:, axis]
     return pos
+
+def find_neighbors(pos, box, rcut = 1.4):
+    """ Find neighbors for each particle. The neighbors are determined to be within rcut distance from the
+    particle.
+    \param pos - N x 3 array of positions
+    \param box - hoomd box object, simulation box
+    \param rcut - cutoff radius for neighbors
+    Return neighbor_list and neighbor_num.
+    neighbor_list - N x 30 array of int, each row i containing indices of neighbors of i-th particle,
+                    including the particle itself.
+                    The remaining part of the row is filled with -1 (e.g. for 6 neighbors, remaining 23 sites are -1).
+    neighbor_num - int array of size N containing numbers of neighbors for each particle. 
+    """
+    neighbor_list = np.zeros((pos.shape[0], 30), dtype=int) - 1
+    neighbor_num = np.zeros(pos.shape[0], dtype = int)
+    dist_list = np.zeros((pos.shape[0], 30), dtype=float) - 1
+
+    for i, r in enumerate(pos):
+        pos_ref = reshape_to_box(pos, r, box)
+        box_ind = np.where((pos_ref[:,0] > -rcut)*(pos_ref[:,0] < rcut)*(pos_ref[:,1] > -rcut)*(pos_ref[:,1] < rcut))[0]
+        box_pos = pos_ref[box_ind, :]
+        dist = np.sqrt(np.sum(box_pos**2, axis = 1))
+        box_neighbors = np.where(dist < rcut)[0]
+        box_dist = dist[box_neighbors]
+        neighbor_ind = box_ind[box_neighbors]
+        neighbor_num[i] = len(neighbor_ind) - 1
+        for j, ind in enumerate(neighbor_ind):
+            neighbor_list[i, j] = ind
+            dist_list[i, j] = box_dist[j]
+    return neighbor_list, neighbor_num
+
+
     
-def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, interval = 100, figsize = (12, 12)):
+def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, interval = 100, figsize = (12, 12), rcut = 1.4,\
+               neighb = False):
     """
     Create animation from a gsd file, where fpath is the path+filename to the gsd file.
     lx, ly - dimensions of the rectangular simulation box;
@@ -175,19 +208,29 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
     """
     def init():
         scat.set_offsets(pos[0, :, :])
+        
         time_text.set_text('')
         return scat, time_text
 
     def update(frame_number):
         scat.set_offsets(pos[frame_number, :, :])
         time_text.set_text('frame = {} of {}'.format(frame_number, n_frames))
-        return scat, time_text
+        if neighb:
+            five_ind = np.where(neighbor_num[frame_number, :] == 5)[0]
+            seven_ind = np.where(neighbor_num[frame_number, :] == 7)[0]
+            five_scat.set_offsets(pos[frame_number, five_ind, :])
+            seven_scat.set_offsets(pos[frame_number, seven_ind, :])
+        else:
+            five_scat.set_offsets(empty_pos)
+            seven_scat.set_offsets(empty_pos)
+        return scat, time_text, five_scat, seven_scat
     
     with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
         n_frames = f_gsd.nframes
         n_p = f_gsd.read_chunk(frame=0, name='particles/N')
         box = f_gsd.read_chunk(frame=0, name='configuration/box')
         pos = np.zeros((n_frames, n_p[0], 2))
+        neighbor_num = np.zeros((n_frames, int(n_p)), dtype = int)
         pos_frame = f_gsd.read_chunk(frame=0, name='particles/position')
         mean_pos_0 = np.mean(pos_frame, axis = 0)
         for j_frame in range(n_frames):
@@ -198,7 +241,10 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
             if center_fixed:
                 pos_frame -= np.mean(pos_frame, axis = 0) - mean_pos_0
             pos[j_frame, :, :] = pos_frame[:, 0:2]
-
+            if neighb:
+                boxdim_box = boxdim(box[0], box[1], box[2])
+                neighbor_list, neighbor_num[j_frame, :] = find_neighbors(pos[j_frame, :,:], boxdim_box, rcut = rcut)
+    
     fig = plt.figure(figsize = figsize)
     ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
                          xlim=(-box[0], box[0]), ylim=(-box[1], box[1]))
@@ -206,6 +252,19 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
     scat = ax.scatter(pos[0, :, 0], pos[0, :, 1],
                       s = 3,
                       facecolors='blue')
+    empty_pos = np.zeros(0)
+    if neighb:
+        five_ind_0 = np.where(neighbor_num[0, :] == 5)[0]
+        seven_ind_0 = np.where(neighbor_num[0, :] == 7)[0]
+        seven_scat = ax.scatter(pos[0, seven_ind_0, 0], pos[0, seven_ind_0, 1],
+                          s = 5,
+                          facecolors='green')
+        five_scat = ax.scatter(pos[0, five_ind_0, 0], pos[0, five_ind_0, 1],
+                          s = 5,
+                          facecolors='red')
+    else:
+        seven_scat = ax.scatter(empty_pos, empty_pos)
+        five_scat = ax.scatter(empty_pos, empty_pos)
     time_text = ax.text(0.02, 1.05, '', transform=ax.transAxes)
 
     animation = FuncAnimation(fig, update, interval=100, frames=n_frames, blit=True)
@@ -263,17 +322,19 @@ def plot_DxDy(Dx, Dy, gamma_list, timestamp, text_list = [], text_pos = 'c', fol
     return fig, ax1, ax2
     
     
-def plot_positions(system, figsize = (7, 7), gridon = True):
+def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = True, ax=None, fig=None):
     """ Show positions of all particles in the system,
     where system is the hoomd system, produced by hoomd.init.
     Show grid lines if gridon == True
     """
-    snapshot = system.take_snapshot(all=True)
-    box = snapshot.box
-    pos = snapshot.particles.position
-    fig = plt.figure(figsize = figsize)
-    ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                         xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
+    if system != None:
+        snapshot = system.take_snapshot(all=True)
+        box = snapshot.box
+        pos = snapshot.particles.position
+    if ax==None or fig==None:
+        fig = plt.figure(figsize = figsize)
+        ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                             xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
     
     scat = ax.scatter(pos[:, 0], pos[:, 1],
                       s = 3,
@@ -369,8 +430,9 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
     return g
     
     
-def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none'):
+def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none', alpha=1):
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2), origin='lower', interpolation = interpolation)
+    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2),\
+    origin='lower', interpolation = interpolation, alpha=alpha)
     ax.scatter(0,0, c='r', marker = '+')
     return fig, ax
