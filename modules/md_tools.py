@@ -432,7 +432,166 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
     
 def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none', alpha=1):
     fig, ax = plt.subplots(1, 1, figsize=figsize)
-    ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2),\
+    cax = ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2),\
     origin='lower', interpolation = interpolation, alpha=alpha)
     ax.scatter(0,0, c='r', marker = '+')
-    return fig, ax
+    return fig, ax, cax
+    
+    
+def psi_order(pos, box, nx=100, ny=100, rcut=1.4):
+    """ 
+    \param pos - N x 3 array of positions
+    \param box - hoomd box object, simulation box
+    \param rcut - cutoff radius for neighbors
+    Return neighbor_list and neighbor_num.
+    neighbor_list - N x 30 array of int, each row i containing indices of neighbors of i-th particle,
+                    including the particle itself.
+                    The remaining part of the row is filled with -1 (e.g. for 6 neighbors, remaining 23 sites are -1).
+    neighbor_num - int array of size N containing numbers of neighbors for each particle. 
+    """
+    neighbor_list = np.zeros((pos.shape[0], 30), dtype=int) - 1
+    neighbor_num = np.zeros(pos.shape[0], dtype = int)
+    dist_list = np.zeros((pos.shape[0], 30), dtype=float) - 1
+    psi = np.zeros((ny, nx), dtype=complex)
+    hx = box.Lx/nx
+    hy = box.Ly/ny
+    X = np.linspace(-0.5*box.Lx, 0.5*box.Lx - hx, nx)
+    Y = np.linspace(-0.5*box.Ly, 0.5*box.Ly - hy, ny)
+    r = np.zeros(3)
+    
+    for i in range(nx):
+        for j in range(ny):
+            r[0] = X[i]
+            r[1] = Y[j]
+            pos_ref = reshape_to_box(pos, r, box)
+            r_ind = np.where((pos_ref[:,0] > -rcut)*(pos_ref[:,0] < rcut)*(pos_ref[:,1] > -rcut)*(pos_ref[:,1] < rcut))[0]
+            r_pos = pos_ref[r_ind, :]
+            dist = np.sqrt(np.sum(r_pos**2, axis = 1))
+            r_nearest_ind = np.argmin(dist)
+            nearest_ind = r_ind[r_nearest_ind]
+            nr = pos_ref[nearest_ind, :] # coordinate of nearest particle in r-centered box
+            box_ind = np.where((pos_ref[:,0] > -rcut + nr[0])*(pos_ref[:,0] < rcut + nr[0])*\
+                               (pos_ref[:,1] > -rcut + nr[1])*(pos_ref[:,1] < rcut + nr[1]))[0]
+            box_pos = pos_ref[box_ind, :]
+            dist = np.sqrt(np.sum((box_pos - nr)**2, axis = 1))
+            box_neighbors = np.where(dist < rcut)[0]
+            nb_rv = box_pos[box_neighbors, :] - nr # radius-vectors to nearest neighbors                   
+            nb_dist = np.sqrt(np.sum(nb_rv**2, axis = 1))
+            nb_rv = nb_rv[np.where(nb_dist != 0)]
+            nb_dist = nb_dist[np.where(nb_dist != 0)]
+            cos_theta = nb_rv[:,0]/nb_dist
+            theta = np.arccos(cos_theta) # sign of the angle still uncertain
+            neg_y_ind = np.where(nb_rv[:,1] < 0)[0]
+            theta[neg_y_ind] = 2*np.pi - theta[neg_y_ind] #resolve uncertainty from arccos
+            psi[j,i] = np.mean(np.exp(1j*6*theta))
+    return psi
+
+def correlation_function(f):
+    cf = 0*f
+    nynx = cf.shape
+    #print('================================================================')
+    for j in range(-nynx[0]//2, nynx[0]//2):
+        for i in range(-nynx[1]//2, nynx[1]//2):
+            #print('i={}, j={}, coor_i={}, coor_j={}'.format(i,j, nynx[1]//2 + i, nynx[0]//2 + j))
+            cf[nynx[0]//2 + j,nynx[1]//2 + i] = np.mean(f*np.conj(np.roll(f, (-j, -i), axis=(0,1))))
+            #print('cf={}'.format(cf[nynx[0]//2 + j,nynx[1]//2 + i]))
+    return cf
+    
+def Eee_from_gsd(fpath, table_path, width, height, step = 1):
+    """
+    Return interaction energy along a trajectory in gsd file located at fpath;
+    table - interaction pair force object
+    """
+    import hoomd
+    import hoomd.md
+    hoomd.context.initialize('--mode=cpu')
+    #hoomd = imp.reload(hoomd)
+    system = hoomd.init.read_gsd(fpath, frame = 0)
+    dt = 0.001
+    all = hoomd.group.all();
+    hoomd.md.integrate.mode_standard(dt=dt);
+    langevin = hoomd.md.integrate.langevin(group=all, kT=0.1, seed=987);
+    snapshot = system.take_snapshot(all=True)
+    print(fpath)
+    Eee = []
+    with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
+        n_frames = f_gsd.nframes
+        n_p = f_gsd.read_chunk(frame=0, name='particles/N')
+        box = f_gsd.read_chunk(frame=0, name='configuration/box')
+        table = hoomd.md.pair.table2D(width, height, 0.5*box[0], 0.5*box[1])
+        table.set_from_file(table_path)
+        pos = np.zeros((n_frames, n_p[0]))
+        pos_frame = f_gsd.read_chunk(frame=0, name='particles/position')
+        for j_frame in range(0, n_frames, step):
+            pos_frame = f_gsd.read_chunk(frame=j_frame, name='particles/position')
+            
+            snapshot.particles.position[:] = pos_frame[:]
+            system.restore_snapshot(snapshot)
+            hoomd.run(1, quiet=True)
+            Eee.append(table.get_energy(hoomd.group.all()))
+    return np.array(Eee)
+
+def Eee_Ep_from_gsd(fpath, table_path, width, height, p=None, A=None, phi=None, step = 1):
+    """
+    Return interaction energy and external periodic potential energy along a trajectory in gsd file located at fpath;
+    table - interaction pair force object
+    """
+    import hoomd
+    import hoomd.md
+    hoomd.context.initialize('--mode=cpu')
+    #hoomd = imp.reload(hoomd)
+    system = hoomd.init.read_gsd(fpath, frame = 0)
+    if phi==None:
+        phi=np.pi
+    if p!=None and A!=None:
+        periodic = hoomd.md.external.periodic_cos()
+        periodic.force_coeff.set('A', A=A, i=0, p=p, phi=phi)
+    dt = 0.001
+    all = hoomd.group.all();
+    hoomd.md.integrate.mode_standard(dt=dt);
+    langevin = hoomd.md.integrate.langevin(group=all, kT=0.01, seed=987);
+    snapshot = system.take_snapshot(all=True)
+    print(fpath)
+    Eee = []
+    Ep = []
+    with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
+        n_frames = f_gsd.nframes
+        n_p = f_gsd.read_chunk(frame=0, name='particles/N')
+        box = f_gsd.read_chunk(frame=0, name='configuration/box')
+        table = hoomd.md.pair.table2D(width, height, 0.5*box[0], 0.5*box[1])
+        table.set_from_file(table_path)
+        pos = np.zeros((n_frames, n_p[0]))
+        pos_frame = f_gsd.read_chunk(frame=0, name='particles/position')
+        for j_frame in range(0, n_frames, step):
+            pos_frame = f_gsd.read_chunk(frame=j_frame, name='particles/position')
+            snapshot.particles.position[:] = pos_frame[:]
+            system.restore_snapshot(snapshot)
+            hoomd.run(1, quiet=True)
+            Eee.append(table.get_energy(hoomd.group.all()))
+            Ep.append(periodic.get_energy(hoomd.group.all()))
+    return np.array(Eee), np.array(Ep)
+    
+    
+    
+def sweep_density(pos, box, window, pts, axis=0):
+    """ Density of particles along a chosen axis, computed using sweeping window average.
+    \param pos - Nx3 array of particle coordinates
+    \param box - hoomd box object with fields Lx and Ly
+    \param window - averaging window width
+    \param pts - number of points to compute density at
+    \param axis - axis (0 or 1) for computing the density along
+    """
+    if axis == 0:
+        L = box.Lx
+        h = box.Ly
+    elif axis == 1:
+        L = box.Ly
+        h = box.Lx
+    else:
+        raise ValueError('axis must be 0 or 1')
+    X = np.linspace(-L/2, L/2, pts)
+    Y = np.zeros(pts)
+    for i, x in enumerate(X):
+        Y[i] = len(np.where((pos[:,axis] > x - window/2)*((pos[:,axis] < x + window/2)))[0])
+    Y /= (window*h)
+    return X, Y
