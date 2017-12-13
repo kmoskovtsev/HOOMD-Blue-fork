@@ -346,8 +346,8 @@ def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = T
     
 def reshape_to_box(pos, ref, box):
     """
-    Center the simulation box arund ref, and reshape the simulation box to the size of corr_box, 
-    potentially filling extra space with images.
+    Center the simulation box arund ref, and return particles to within the simulation box.
+    Return new positions.
     """
     pos_ref = pos - ref
     mask = np.fix(pos_ref[:, 0]/(0.5*box.Lx)) #-1 or 1 if to the left or right from the centered box 
@@ -595,3 +595,10 @@ def sweep_density(pos, box, window, pts, axis=0):
         Y[i] = len(np.where((pos[:,axis] > x - window/2)*((pos[:,axis] < x + window/2)))[0])
     Y /= (window*h)
     return X, Y
+    
+def rotate_positions(pos, box, alpha):
+    R = np.array([[np.cos(alpha), -np.sin(alpha), 0], [np.sin(alpha), np.cos(alpha), 0],\
+                 [0, 0, 1]])
+    rot_pos = np.transpose(np.dot(R, np.transpose(pos)))
+    rot_pos = reshape_to_box(rot_pos, np.zeros(3), box)
+    return rot_pos
