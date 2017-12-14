@@ -35,6 +35,7 @@
 #include "OPLSDihedralForceCompute.h"
 #include "PotentialBond.h"
 #include "PotentialExternal.h"
+#include "PotentialExternalTimeDependent.h"
 #include "PotentialPairDPDThermo.h"
 #include "PotentialPair.h"
 #include "PotentialTersoff.h"
@@ -78,6 +79,7 @@
 #include "OPLSDihedralForceComputeGPU.h"
 #include "PotentialBondGPU.h"
 #include "PotentialExternalGPU.h"
+#include "PotentialExternalTimeDependentGPU.h"
 #include "PotentialPairDPDThermoGPU.h"
 #include "PotentialPairGPU.h"
 #include "PotentialTersoffGPU.h"
@@ -244,6 +246,7 @@ PYBIND11_PLUGIN(_md)
     m.def("make_wall_field_params", &make_wall_field_params);
     export_PotentialExternal<PotentialExternalPeriodic>(m, "PotentialExternalPeriodic");
     export_PotentialExternal<PotentialExternalPeriodicCos>(m, "PotentialExternalPeriodicCos");
+    export_PotentialExternalTimeDependent<PotentialExternalPeriodicTime>(m, "PotentialExternalPeriodicTime");
     export_PotentialExternal<PotentialExternalElectricField>(m, "PotentialExternalElectricField");
     export_PotentialExternalWall<EvaluatorPairLJ>(m, "WallsPotentialLJ");
     export_PotentialExternalWall<EvaluatorPairYukawa>(m, "WallsPotentialYukawa");
@@ -297,6 +300,7 @@ PYBIND11_PLUGIN(_md)
     export_ActiveForceComputeGPU(m);
     export_PotentialExternalGPU<PotentialExternalPeriodicGPU, PotentialExternalPeriodic>(m, "PotentialExternalPeriodicGPU");
     export_PotentialExternalGPU<PotentialExternalPeriodicCosGPU, PotentialExternalPeriodicCos>(m, "PotentialExternalPeriodicCosGPU");
+    export_PotentialExternalTimeDependentGPU<PotentialExternalPeriodicTimeGPU, PotentialExternalPeriodicTime>(m, "PotentialExternalPeriodicTimeGPU");
     export_PotentialExternalGPU<PotentialExternalElectricFieldGPU, PotentialExternalElectricField>(m, "PotentialExternalElectricFieldGPU");
     export_PotentialExternalGPU<WallsPotentialLJGPU, WallsPotentialLJ>(m, "WallsPotentialLJGPU");
     export_PotentialExternalGPU<WallsPotentialYukawaGPU, WallsPotentialYukawa>(m, "WallsPotentialYukawaGPU");
