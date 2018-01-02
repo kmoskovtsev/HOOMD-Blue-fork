@@ -36,3 +36,19 @@ EvaluatorExternalPeriodicCos.h is created based on EvaluatorExternalPeriodic.h
 add registration lines in module-md.cc
 
 Register in ExternalPotentialGPU.cu
+
+===============================================================================
+<--- PeriodicTime --->
+Make another periodic potential which is cos(qr)*cos(omega*t).
+Create PotentialExternalTimeDependent
+Create PotentialExternalTimeDependentGPU
+--Not yet: In md/external.: create class periodic_cos, which calls _md.PotentialExternalPeriodicTime;
+_md.PotentialExternalPeriodicTime is typedefed in md/AllExternalPotentials.h as
+PotentialExternalTimeDependent<EvaluatorExternalPeriodicTime> PotentialExternalPeriodicTime;
+
+EvaluatorExternalPeriodicTime.h is created based on EvaluatorExternalPeriodicCos.h
+
+add registration lines in module-md.cc
+
+--not yet: Register in ExternalPotentialGPU.cu
+

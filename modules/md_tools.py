@@ -322,7 +322,7 @@ def plot_DxDy(Dx, Dy, gamma_list, timestamp, text_list = [], text_pos = 'c', fol
     return fig, ax1, ax2
     
     
-def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = True, ax=None, fig=None):
+def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = True, ax=None, fig=None, s=5):
     """ Show positions of all particles in the system,
     where system is the hoomd system, produced by hoomd.init.
     Show grid lines if gridon == True
@@ -337,7 +337,7 @@ def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = T
                              xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
     
     scat = ax.scatter(pos[:, 0], pos[:, 1],
-                      s = 3,
+                      s = s,
                       facecolors='blue')
     if gridon:
         ax.grid()
