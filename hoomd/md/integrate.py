@@ -718,6 +718,125 @@ class nve(_integration_method):
         if zero_force is not None:
             self.cpp_method.setZeroForce(zero_force);
 
+class custom_scatter2D(_integration_method):
+    R""" NVE Integration with custom scattering; velocities are propagated via Velocity-Verlet, and elastic scattering events 
+    rotate velocity at random moments in time.
+
+    Args:
+        group (:py:mod:`hoomd.group`): Group of particles on which to apply this method.
+        Nk (int) number of k-points used in total scattering rate calculation
+
+        NW (int) number of points for sampling W (cumulative angle probability distribution)
+
+        seed (int) seed for random number generation
+
+        limit (bool): (optional) Enforce that no particle moves more than a distance of \a limit in a single time step
+        zero_force (bool): When set to true, particles in the \a group are integrated forward in time with constant
+          velocity and any net force on them is ignored.
+
+
+    :py:class:`nve` performs constant volume, constant energy simulations using the standard
+    Velocity-Verlet method. For poor initial conditions that include overlapping atoms, a
+    limit can be specified to the movement a particle is allowed to make in one time step.
+    After a few thousand time steps with the limit set, the system should be in a safe state
+    to continue with unconstrained integration.
+
+    Note:
+        With an active limit, Newton's third law is effectively **not** obeyed and the system
+        can gain linear momentum. Activate the :py:class:`hoomd.md.update.zero_momentum` updater during the limited nve
+        run to prevent this.
+
+    :py:class:`nve` is an integration method. It must be used with :py:class:`mode_standard`.
+
+    A :py:class:`hoomd.compute.thermo` is automatically specified and associated with *group*.
+
+    Examples::
+
+        all = group.all()
+        integrate.nve(group=all)
+        integrator = integrate.nve(group=all)
+        typeA = group.type('A')
+        integrate.nve(group=typeA, limit=0.01)
+        integrate.nve(group=typeA, zero_force=True)
+
+    """
+    def __init__(self, group, Nk, NW, seed, limit=None, zero_force=False):
+        hoomd.util.print_status_line();
+
+        # initialize base class
+        _integration_method.__init__(self);
+
+        # create the compute thermo
+        hoomd.compute._get_unique_thermo(group=group);
+
+        # initialize the reflected c++ class
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+        else:
+            self.cpp_method = _md.TwoStepCustomScatter2DGPU(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+
+        # set the limit
+        if limit is not None:
+            self.cpp_method.setLimit(limit);
+
+        self.cpp_method.setZeroForce(zero_force);
+
+        self.cpp_method.validateGroup()
+
+        # store metadata
+        self.group = group
+        self.limit = limit
+        self.Nk = Nk
+        self.NW = NW
+        self.metadata_fields = ['group', 'limit', 'Nk', 'NW']
+
+    def set_params(self, limit=None, zero_force=None):
+        R""" Changes parameters of an existing integrator.
+
+        Args:
+            limit (bool): (if set) New limit value to set. Removes the limit if limit is False
+            zero_force (bool): (if set) New value for the zero force option
+
+        Examples::
+
+            integrator.set_params(limit=0.01)
+            integrator.set_params(limit=False)
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+
+        # change the parameters
+        if limit is not None:
+            if limit == False:
+                self.cpp_method.removeLimit();
+            else:
+                self.cpp_method.setLimit(limit);
+            self.limit = limit
+
+        if zero_force is not None:
+            self.cpp_method.setZeroForce(zero_force);
+
+
+    def set_tables(self, wk, Winv, vmin, vmax):
+        R""" Set tabulated values of scattering rates and angle distributions
+
+        Args:
+            wk (numpy array (Nk,)): total scattering rates for each k-point
+            Winv (numpy array (Nk, NW)): inverse cumulative distribution probability for angles
+            vmin (float): speed corresponding to the lowest k value in wk table
+            vmax (float): speed corresponding to the highest k value in wk table
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+        wk_table = _hoomd.std_vector_scalar(wk);
+        Winv_table = _hoomd.std_vector_scalar(Winv.flatten());
+        if len(wk) != self.Nk:
+            raise ValueError("wk arrays size is not equal Nk")
+        if len(Winv.flatten()) != self.Nk*self.NW:
+            raise ValueError("Number of elements of Winv is not Nk*NW")
+        self.cpp_method.setTables(wk_table, Winv_table, vmin, vmax)
+        
+
 class langevin(_integration_method):
     R""" Langevin dynamics.
 

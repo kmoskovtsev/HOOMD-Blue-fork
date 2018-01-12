@@ -35,6 +35,7 @@ set(_md_sources module-md.cc
                    TwoStepLangevin.cc
                    TwoStepNPTMTK.cc
                    TwoStepNVE.cc
+                   TwoStepCustomScatter2D.cc
                    TwoStepNVTMTK.cc
                    ZeroMomentumUpdater.cc
 		   MuellerPlatheFlow.cc
@@ -149,6 +150,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TwoStepNPTMTK.h
                 TwoStepNVEGPU.h
                 TwoStepNVE.h
+                TwoStepCustomScatter2D.h
                 TwoStepNVTMTKGPU.h
                 TwoStepNVTMTK.h
                 WallData.h
