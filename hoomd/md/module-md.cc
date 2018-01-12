@@ -51,6 +51,7 @@
 #include "TwoStepLangevin.h"
 #include "TwoStepNPTMTK.h"
 #include "TwoStepNVE.h"
+#include "TwoStepCustomScatter2D.h"
 #include "TwoStepNVTMTK.h"
 #include "WallData.h"
 #include "ZeroMomentumUpdater.h"
@@ -313,6 +314,7 @@ PYBIND11_PLUGIN(_md)
     export_TempRescaleUpdater(m);
     export_ZeroMomentumUpdater(m);
     export_TwoStepNVE(m);
+    export_TwoStepCustomScatter2D(m);
     export_TwoStepNVTMTK(m);
     export_TwoStepLangevinBase(m);
     export_TwoStepLangevin(m);
