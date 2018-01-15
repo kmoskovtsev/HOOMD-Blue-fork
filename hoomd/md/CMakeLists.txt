@@ -149,6 +149,7 @@ set(_md_headers ActiveForceComputeGPU.h
                 TwoStepNPTMTKGPU.h
                 TwoStepNPTMTK.h
                 TwoStepNVEGPU.h
+                TwoStepCustomScatter2DGPU.h
                 TwoStepNVE.h
                 TwoStepCustomScatter2D.h
                 TwoStepNVTMTKGPU.h
@@ -186,6 +187,7 @@ list(APPEND _md_sources ActiveForceComputeGPU.cc
                            TwoStepLangevinGPU.cc
                            TwoStepNPTMTKGPU.cc
                            TwoStepNVEGPU.cc
+                           TwoStepCustomScatter2DGPU.cc
                            TwoStepNVTMTKGPU.cc
 			   MuellerPlatheFlowGPU.cc
                            )
@@ -225,6 +227,7 @@ set(_md_cu_sources ActiveForceComputeGPU.cu
                       TwoStepLangevinGPU.cu
                       TwoStepNPTMTKGPU.cu
                       TwoStepNVEGPU.cu
+                      TwoStepCustomScatter2DGPU.cu
                       TwoStepNVTMTKGPU.cu
 		      MuellerPlatheFlowGPU.cu
                       )

@@ -4,18 +4,18 @@
 
 // Maintainer: joaander
 
-/*! \file TwoStepNVEGPU.cuh
-    \brief Declares GPU kernel code for NVE integration on the GPU. Used by TwoStepNVEGPU.
+/*! \file TwoStepCustomScatter2DGPU.cuh
+    \brief Declares GPU kernel code for CustomScatter2D integration on the GPU. Used by TwoStepCustomScatter2DGPU.
 */
 
 #include "hoomd/ParticleData.cuh"
 #include "hoomd/HOOMDMath.h"
 
-#ifndef __TWO_STEP_NVE_GPU_CUH__
-#define __TWO_STEP_NVE_GPU_CUH__
+#ifndef __TWO_STEP_CUSTOMSCATTER2D_GPU_CUH__
+#define __TWO_STEP_CUSTOMSCATTER2D_GPU_CUH__
 
-//! Kernel driver for the first part of the NVE update called by TwoStepNVEGPU
-cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
+//! Kernel driver for the first part of the CustomScatter2D update called by TwoStepNVEGPU
+cudaError_t gpu_scatter2d_step_one(Scalar4 *d_pos,
                              Scalar4 *d_vel,
                              const Scalar3 *d_accel,
                              int3 *d_image,
@@ -29,7 +29,7 @@ cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
                              unsigned int block_size);
 
 //! Kernel driver for the second part of the NVE update called by TwoStepNVEGPU
-cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
+cudaError_t gpu_scatter2d_step_two(Scalar4 *d_vel,
                              Scalar3 *d_accel,
                              unsigned int *d_group_members,
                              unsigned int group_size,
@@ -38,10 +38,19 @@ cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
                              bool limit,
                              Scalar limit_val,
                              bool zero_force,
-                             unsigned int block_size);
+                             unsigned int block_size,
+                             unsigned int *d_tag,
+                             Scalar *d_wk,
+                             Scalar *d_Wint,
+                             unsigned int pitch,
+                             unsigned int Nk,
+                             unsigned int NW,
+                             Scalar3 v_params,
+                             unsigned int seed,
+                             unsigned int timestep);
 
 //! Kernel driver for the first part of the angular NVE update (NO_SQUISH) by TwoStepNVEPU
-cudaError_t gpu_nve_angular_step_one(Scalar4 *d_orientation,
+cudaError_t gpu_scatter2d_angular_step_one(Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -51,7 +60,7 @@ cudaError_t gpu_nve_angular_step_one(Scalar4 *d_orientation,
                              Scalar scale);
 
 //! Kernel driver for the second part of the angular NVE update (NO_SQUISH) by TwoStepNVEPU
-cudaError_t gpu_nve_angular_step_two(const Scalar4 *d_orientation,
+cudaError_t gpu_scatter2d_angular_step_two(const Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -60,4 +69,4 @@ cudaError_t gpu_nve_angular_step_two(const Scalar4 *d_orientation,
                              Scalar deltaT,
                              Scalar scale);
 
-#endif //__TWO_STEP_NVE_GPU_CUH__
+#endif //__TWO_STEP_CUSTOMSCATTER2D_GPU_CUH__

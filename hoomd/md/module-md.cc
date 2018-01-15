@@ -92,6 +92,7 @@
 #include "TwoStepLangevinGPU.h"
 #include "TwoStepNPTMTKGPU.h"
 #include "TwoStepNVEGPU.h"
+#include "TwoStepCustomScatter2DGPU.h"
 #include "TwoStepNVTMTKGPU.h"
 #include "MuellerPlatheFlowGPU.h"
 #endif
@@ -328,6 +329,7 @@ PYBIND11_PLUGIN(_md)
 
 #ifdef ENABLE_CUDA
     export_TwoStepNVEGPU(m);
+    export_TwoStepCustomScatter2DGPU(m);
     export_TwoStepNVTMTKGPU(m);
     export_TwoStepLangevinGPU(m);
     export_TwoStepBDGPU(m);

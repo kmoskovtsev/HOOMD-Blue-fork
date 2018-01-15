@@ -4,13 +4,13 @@
 
 // Maintainer: joaander
 
-#include "TwoStepNVE.h"
+#include "TwoStepCustomScatter2D.h"
 
-#ifndef __TWO_STEP_NVE_GPU_H__
-#define __TWO_STEP_NVE_GPU_H__
+#ifndef __TWO_STEP_CUSTOMSCATTER2D_GPU_H__
+#define __TWO_STEP_CUSTOMSCATTER2D_GPU_H__
 
-/*! \file TwoStepNVEGPU.h
-    \brief Declares the TwoStepNVEGPU class
+/*! \file TwoStepCustomScatter2DGPU.h
+    \brief Declares the TwoStepCustomScatter2DGPU class
 */
 
 #ifdef NVCC
@@ -26,12 +26,16 @@
 
     \ingroup updaters
 */
-class TwoStepNVEGPU : public TwoStepNVE
+class TwoStepCustomScatter2DGPU : public TwoStepCustomScatter2D
     {
     public:
         //! Constructs the integration method and associates it with the system
-        TwoStepNVEGPU(std::shared_ptr<SystemDefinition> sysdef, std::shared_ptr<ParticleGroup> group);
-        virtual ~TwoStepNVEGPU() {};
+        TwoStepCustomScatter2DGPU(std::shared_ptr<SystemDefinition> sysdef, 
+                std::shared_ptr<ParticleGroup> group,
+                unsigned int Nk,
+                unsigned int NW,
+                unsigned int seed);
+        virtual ~TwoStepCustomScatter2DGPU() {};
 
         //! Performs the first step of the integration
         virtual void integrateStepOne(unsigned int timestep);
@@ -45,7 +49,7 @@ class TwoStepNVEGPU : public TwoStepNVE
         */
         virtual void setAutotunerParams(bool enable, unsigned int period)
             {
-            TwoStepNVE::setAutotunerParams(enable, period);
+            TwoStepCustomScatter2D::setAutotunerParams(enable, period);
             m_tuner_one->setPeriod(period);
             m_tuner_one->setEnabled(enable);
             m_tuner_two->setPeriod(period);
@@ -57,7 +61,7 @@ class TwoStepNVEGPU : public TwoStepNVE
         std::unique_ptr<Autotuner> m_tuner_two; //!< Autotuner for block size (step two kernel)
     };
 
-//! Exports the TwoStepNVEGPU class to python
-void export_TwoStepNVEGPU(pybind11::module& m);
+//! Exports the TwoStepCustomScatter2DGPU class to python
+void export_TwoStepCustomScatter2DGPU(pybind11::module& m);
 
-#endif // #ifndef __TWO_STEP_NVE_GPU_H__
+#endif // #ifndef __TWO_STEP_SUSTOMSCATTER2D_GPU_H__

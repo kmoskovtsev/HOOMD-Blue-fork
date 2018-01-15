@@ -4,16 +4,17 @@
 
 // Maintainer: joaander
 
-#include "TwoStepNVEGPU.cuh"
+#include "TwoStepCustomScatter2DGPU.cuh"
 #include "hoomd/VectorMath.h"
-
+#include "hoomd/Saru.h"
 #include <assert.h>
 
-/*! \file TwoStepNVEGPU.cu
-    \brief Defines GPU kernel code for NVE integration on the GPU. Used by TwoStepNVEGPU.
+/*! \file TwoStepCustomScatter2DGPU.cu
+    \brief Defines GPU kernel code for CustomScatter2D integration on the GPU. Used by TwoStepCustomScatter2DGPU.
 */
 
-//! Takes the first half-step forward in the velocity-verlet NVE integration on a group of particles
+//! Takes the first half-step forward in the CustomScatter2D integration on a group of particles
+//This step is totally identical to that in NVE integrator
 /*! \param d_pos array of particle positions
     \param d_vel array of particle velocities
     \param d_accel array of particle accelerations
@@ -37,7 +38,7 @@
     contiguous as possible leading to fewer memory transactions on compute 1.3 hardware and more cache hits on Fermi.
 */
 extern "C" __global__
-void gpu_nve_step_one_kernel(Scalar4 *d_pos,
+void gpu_scatter2d_step_one_kernel(Scalar4 *d_pos,
                              Scalar4 *d_vel,
                              const Scalar3 *d_accel,
                              int3 *d_image,
@@ -115,9 +116,9 @@ void gpu_nve_step_one_kernel(Scalar4 *d_pos,
     \param limit_val Length to limit particle distance movement to
     \param zero_force Set to true to always assign an acceleration of 0 to all particles in the group
 
-    See gpu_nve_step_one_kernel() for full documentation, this function is just a driver.
+    See gpu_scatter2d_step_one_kernel() for full documentation, this function is just a driver.
 */
-cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
+cudaError_t gpu_scatter2d_step_one(Scalar4 *d_pos,
                              Scalar4 *d_vel,
                              const Scalar3 *d_accel,
                              int3 *d_image,
@@ -134,7 +135,7 @@ cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
     if (max_block_size == UINT_MAX)
         {
         cudaFuncAttributes attr;
-        cudaFuncGetAttributes(&attr, (const void*)gpu_nve_step_one_kernel);
+        cudaFuncGetAttributes(&attr, (const void*)gpu_scatter2d_step_one_kernel);
         max_block_size = attr.maxThreadsPerBlock;
         }
 
@@ -145,7 +146,7 @@ cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
     dim3 threads(run_block_size, 1, 1);
 
     // run the kernel
-    gpu_nve_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, group_size, box, deltaT, limit, limit_val, zero_force);
+    gpu_scatter2d_step_one_kernel<<< grid, threads >>>(d_pos, d_vel, d_accel, d_image, d_group_members, group_size, box, deltaT, limit, limit_val, zero_force);
 
     return cudaSuccess;
     }
@@ -159,7 +160,7 @@ cudaError_t gpu_nve_step_one(Scalar4 *d_pos,
     \param group_size Number of members in the group
     \param deltaT timestep
 */
-__global__ void gpu_nve_angular_step_one_kernel(Scalar4 *d_orientation,
+__global__ void gpu_scatter2d_angular_step_one_kernel(Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -280,7 +281,7 @@ __global__ void gpu_nve_angular_step_one_kernel(Scalar4 *d_orientation,
     \param group_size Number of members in the group
     \param deltaT timestep
 */
-cudaError_t gpu_nve_angular_step_one(Scalar4 *d_orientation,
+cudaError_t gpu_scatter2d_angular_step_one(Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -295,13 +296,14 @@ cudaError_t gpu_nve_angular_step_one(Scalar4 *d_orientation,
     dim3 threads(block_size, 1, 1);
 
     // run the kernel
-    gpu_nve_angular_step_one_kernel<<< grid, threads >>>(d_orientation, d_angmom, d_inertia, d_net_torque, d_group_members, group_size, deltaT, scale);
+    gpu_scatter2d_angular_step_one_kernel<<< grid, threads >>>(d_orientation, d_angmom, d_inertia, d_net_torque, d_group_members, group_size, deltaT, scale);
 
     return cudaSuccess;
     }
 
 
-//! Takes the second half-step forward in the velocity-verlet NVE integration on a group of particles
+//! Takes the second half-step forward in the CustomScatter2D integration on a group of particles
+// Identical to Velocity-Verlet except that elastic scattering is introduced randomly
 /*! \param d_vel array of particle velocities
     \param d_accel array of particle accelerations
     \param d_group_members Device array listing the indicies of the mebers of the group to integrate
@@ -312,11 +314,18 @@ cudaError_t gpu_nve_angular_step_one(Scalar4 *d_orientation,
         a distance further than \a limit_val in one step.
     \param limit_val Length to limit particle distance movement to
     \param zero_force Set to true to always assign an acceleration of 0 to all particles in the group
-
-    This kernel is implemented in a very similar manner to gpu_nve_step_one_kernel(), see it for design details.
+    \param d_tag array of particle tags
+    \param d_wk 1D array table of total scattering rates from kmin to kmax
+    \param d_Winv 2D array table of scattering angle distributions
+    \param pitch - pitch for d_Winv table
+    \param Nk lenght of d_wk and height of d_Winv
+    \param Nw width of d_Winv
+    \param v_params (vmin, vmax, dv) for the table d_wk
+    \param seed seed for random number generation
+    This kernel is implemented in a very similar manner to gpu_scatter2d_step_one_kernel(), see it for design details.
 */
 extern "C" __global__
-void gpu_nve_step_two_kernel(
+void gpu_scatter2d_step_two_kernel(
                             Scalar4 *d_vel,
                             Scalar3 *d_accel,
                             unsigned int *d_group_members,
@@ -325,15 +334,24 @@ void gpu_nve_step_two_kernel(
                             Scalar deltaT,
                             bool limit,
                             Scalar limit_val,
-                            bool zero_force)
+                            bool zero_force,
+                            unsigned int *d_tag,
+                            Scalar *d_wk,
+                            Scalar *d_Winv,
+                            unsigned int pitch,
+                            unsigned int Nk,
+                            unsigned int NW,
+                            Scalar3 v_params,
+                            unsigned int seed,
+                            unsigned int timestep)
     {
     // determine which particle this thread works on (MEM TRANSFER: 4 bytes)
     int group_idx = blockIdx.x * blockDim.x + threadIdx.x;
-
+    Scalar dW = Scalar(1)/(Scalar(NW) - Scalar(1));
     if (group_idx < group_size)
         {
         unsigned int idx = d_group_members[group_idx];
-
+        unsigned int ptag = d_tag[idx];
         // read in the net forc and calculate the acceleration MEM TRANSFER: 16 bytes
         Scalar3 accel = make_scalar3(Scalar(0.0), Scalar(0.0), Scalar(0.0));
 
@@ -349,6 +367,42 @@ void gpu_nve_step_two_kernel(
             accel.x /= mass;
             accel.y /= mass;
             accel.z /= mass;
+
+            //Scatter
+            hoomd::detail::Saru saru(ptag, timestep, seed);
+            Scalar total_rn = saru.s<Scalar>(0,1);
+            Scalar W_rn = saru.s<Scalar>(0,1);
+            //Determine scattering rate
+            Scalar v = fast::sqrt(fast::pow(vel.x, 2) + fast::pow(vel.y, 2));
+            Scalar f_k = (v - v_params.x)/v_params.z; //(v - v_min)/dv
+            int i_k = (int) floor(f_k);
+            //Check boundaries: use edge table values if outside table boundaries
+            if (f_k >= Nk - 1)
+                {
+                i_k = Nk - 2;
+                f_k = Nk - 1;
+                }
+            if (f_k < 0)
+                {
+                i_k = 0;
+                f_k = 0;
+                }
+            Scalar alpha_k = f_k - i_k;
+            Scalar w = d_wk[i_k] + (d_wk[i_k + 1] - d_wk[i_k])*alpha_k;
+            if (total_rn < deltaT*w)
+                {
+                //Determine scattering angle using bilinear interpolation from Winv table
+                int i_W = (int)floor(W_rn/dW);
+                Scalar alpha_W = W_rn/dW - i_W;
+                Scalar theta_ik = (1 - alpha_W)*d_Winv[i_k*pitch + i_W] + alpha_W*d_Winv[i_k*pitch + i_W + 1];
+                Scalar theta_ikp = (1 - alpha_W)*d_Winv[(i_k + 1)*pitch + i_W] + alpha_W*d_Winv[(i_k + 1)*pitch + i_W + 1];
+                Scalar theta = (1 - alpha_k)*theta_ik + alpha_k*theta_ikp;
+                //Rotate 2D (xy) velocity by theta
+                Scalar vx = vel.x;
+                Scalar vy = vel.y;
+                vel.x = vx*fast::cos(theta) - vy*fast::sin(theta);
+                vel.y = vx*fast::sin(theta) + vy*fast::cos(theta);
+                }
             }
 
         // v(t+deltaT) = v(t+deltaT/2) + 1/2 * a(t+deltaT)*deltaT
@@ -386,10 +440,18 @@ void gpu_nve_step_two_kernel(
         a distance further than \a limit_val in one step.
     \param limit_val Length to limit particle distance movement to
     \param zero_force Set to true to always assign an acceleration of 0 to all particles in the group
+    \param d_tag array of particle tags
+    \param d_wk 1D array table of total scattering rates from kmin to kmax
+    \param d_Winv 2D array table of scattering angle distributions
+    \param pitch - pitch for d_Winv table
+    \param Nk lenght of d_wk and height of d_Winv
+    \param Nw width of d_Winv
+    \param v_params (vmin, vmax, dv) for the table d_wk
+    \param seed seed for random number generation
 
-    This is just a driver for gpu_nve_step_two_kernel(), see it for details.
+    This is just a driver for gpu_scatter2d_step_two_kernel(), see it for details.
 */
-cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
+cudaError_t gpu_scatter2d_step_two(Scalar4 *d_vel,
                              Scalar3 *d_accel,
                              unsigned int *d_group_members,
                              unsigned int group_size,
@@ -398,13 +460,22 @@ cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
                              bool limit,
                              Scalar limit_val,
                              bool zero_force,
-                             unsigned int block_size)
+                             unsigned int block_size,
+                             unsigned int *d_tag,
+                             Scalar *d_wk,
+                             Scalar *d_Winv,
+                             unsigned int pitch,
+                             unsigned int Nk,
+                             unsigned int NW,
+                             Scalar3 v_params,
+                             unsigned int seed,
+                             unsigned int timestep)
     {
     static unsigned int max_block_size = UINT_MAX;
     if (max_block_size == UINT_MAX)
         {
         cudaFuncAttributes attr;
-        cudaFuncGetAttributes(&attr, (const void *)gpu_nve_step_two_kernel);
+        cudaFuncGetAttributes(&attr, (const void *)gpu_scatter2d_step_two_kernel);
         max_block_size = attr.maxThreadsPerBlock;
         }
 
@@ -415,7 +486,7 @@ cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
     dim3 threads(run_block_size, 1, 1);
 
     // run the kernel
-    gpu_nve_step_two_kernel<<< grid, threads >>>(d_vel,
+    gpu_scatter2d_step_two_kernel<<< grid, threads >>>(d_vel,
                                                  d_accel,
                                                  d_group_members,
                                                  group_size,
@@ -423,7 +494,16 @@ cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
                                                  deltaT,
                                                  limit,
                                                  limit_val,
-                                                 zero_force);
+                                                 zero_force,
+                                                 d_tag,
+                                                 d_wk,
+                                                 d_Winv,
+                                                 pitch,
+                                                 Nk,
+                                                 NW,
+                                                 v_params,
+                                                 seed,
+                                                 timestep);
 
     return cudaSuccess;
     }
@@ -437,7 +517,7 @@ cudaError_t gpu_nve_step_two(Scalar4 *d_vel,
     \param group_size Number of members in the group
     \param deltaT timestep
 */
-__global__ void gpu_nve_angular_step_two_kernel(const Scalar4 *d_orientation,
+__global__ void gpu_scatter2d_angular_step_two_kernel(const Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -489,7 +569,7 @@ __global__ void gpu_nve_angular_step_two_kernel(const Scalar4 *d_orientation,
     \param group_size Number of members in the group
     \param deltaT timestep
 */
-cudaError_t gpu_nve_angular_step_two(const Scalar4 *d_orientation,
+cudaError_t gpu_scatter2d_angular_step_two(const Scalar4 *d_orientation,
                              Scalar4 *d_angmom,
                              const Scalar3 *d_inertia,
                              const Scalar4 *d_net_torque,
@@ -504,7 +584,7 @@ cudaError_t gpu_nve_angular_step_two(const Scalar4 *d_orientation,
     dim3 threads(block_size, 1, 1);
 
     // run the kernel
-    gpu_nve_angular_step_two_kernel<<< grid, threads >>>(d_orientation, d_angmom, d_inertia, d_net_torque, d_group_members, group_size, deltaT, scale);
+    gpu_scatter2d_angular_step_two_kernel<<< grid, threads >>>(d_orientation, d_angmom, d_inertia, d_net_torque, d_group_members, group_size, deltaT, scale);
 
     return cudaSuccess;
     }
