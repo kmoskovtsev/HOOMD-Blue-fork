@@ -11,6 +11,7 @@
 #include "hoomd/Saru.h"
 
 using namespace std;
+using namespace hoomd;
 namespace py = pybind11;
 
 /*! \file TwoStepCustomScatter2D.cc
@@ -28,9 +29,11 @@ TwoStepCustomScatter2D::TwoStepCustomScatter2D(std::shared_ptr<SystemDefinition>
                        unsigned int Nk,
                        unsigned int NW,
                        unsigned int seed,
+                       std::shared_ptr<Variant> T,
+                       bool noiseless_t,
                        bool skip_restart)
     : IntegrationMethodTwoStep(sysdef, group), m_limit(false), m_limit_val(1.0), m_zero_force(false),
-    m_Nk(Nk), m_NW(NW), m_seed(seed)
+    m_Nk(Nk), m_NW(NW), m_T(T), m_noiseless_t(noiseless_t)
     {
     m_exec_conf->msg->notice(5) << "Constructing TwoStepCustomScatter2D" << endl;
 
@@ -57,11 +60,27 @@ TwoStepCustomScatter2D::TwoStepCustomScatter2D(std::shared_ptr<SystemDefinition>
 
     assert(!m_wk.isNull());
     assert(!m_Winv.isNull());
+    
+    //send seed=0 to all MPI ranks
+    #ifdef ENABLE_MPI
+    if( this->m_pdata->getDomainDecomposition() )
+        bcast(m_seed, 0, this->m_exec_conf->getMPICommunicator());
+    #endif
+    //Allocate memory for the per-type gamma storage and initialize them to 1.0
+    GPUVector<Scalar> gamma(m_pdata->getNTypes(), m_exec_conf);
+    m_gamma.swap(gamma);
+    ArrayHandle<Scalar> h_gamma(m_gamma, access_location::host, access_mode::overwrite);
+    for (unsigned int i=0; i < m_gamma.size(); i++)
+        h_gamma.data[i] = Scalar(1.0);
+    m_seed = m_seed*0x12345677 + 0x12345; m_seed^=(m_seed>>16); m_seed*=0x45679;
+    //connect to the ParticleData to receive notifications when the maximum number of particles changes
+    m_pdata->getNumTypesChangeSignal().connect<TwoStepCustomScatter2D, &TwoStepCustomScatter2D::slotNumTypesChange>(this);
     }
 
 TwoStepCustomScatter2D::~TwoStepCustomScatter2D()
     {
     m_exec_conf->msg->notice(5) << "Destroying TwoStepCustomScatter2D" << endl;
+    m_pdata->getNumTypesChangeSignal().disconnect<TwoStepCustomScatter2D, &TwoStepCustomScatter2D::slotNumTypesChange>(this);
     }
 
 /*! \param limit Distance to limit particle movement each time step
@@ -86,6 +105,44 @@ void TwoStepCustomScatter2D::removeLimit()
     \post Particle positions are moved forward to timestep+1 and velocities to timestep+1/2 per the velocity verlet
           method.
 */
+
+void TwoStepCustomScatter2D::slotNumTypesChange()
+    {
+    // skip the reallocation if the number of types does not change
+    // this keeps old parameters when restoring a snapshot
+    // it will result in invalid coefficients if the snapshot has a different type id -> name mapping
+    if (m_pdata->getNTypes() == m_gamma.size())
+        return;
+
+    // re-allocate memory for the per-type gamma storage and initialize them to 1.0
+    unsigned int old_ntypes = m_gamma.size();
+    m_gamma.resize(m_pdata->getNTypes());
+
+    ArrayHandle<Scalar> h_gamma(m_gamma, access_location::host, access_mode::readwrite);
+
+    for (unsigned int i = old_ntypes; i < m_gamma.size(); i++)
+        {
+        h_gamma.data[i] = Scalar(1.0);
+        }
+    }
+
+
+/*! \param typ Particle type to set gamma for
+    \param gamma The gamma value to set
+*/
+void TwoStepCustomScatter2D::setGamma(unsigned int typ, Scalar gamma)
+    {
+    if (typ >= m_pdata->getNTypes())
+        {
+        m_exec_conf->msg->error() << "Trying to set gamma for a non existent type! " << typ << endl;
+        throw runtime_error("Error setting params in TwoStepLangevinBase");
+        }
+
+    ArrayHandle<Scalar> h_gamma(m_gamma, access_location::host, access_mode::readwrite);
+    h_gamma.data[typ] = gamma;
+    }
+
+
 
 void TwoStepCustomScatter2D::setTables(const std::vector<Scalar> &wk,
                                      const std::vector<Scalar> &Winv,
@@ -290,18 +347,23 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
 
     // profile this step
     if (m_prof)
-        m_prof->push("NVE step 2");
+        m_prof->push("CustomScatter2D step 2");
 
+    ArrayHandle<Scalar4> h_pos(m_pdata->getPositions(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar4> h_vel(m_pdata->getVelocities(), access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar3> h_accel(m_pdata->getAccelerations(), access_location::host, access_mode::readwrite);
 
     ArrayHandle<Scalar4> h_net_force(net_force, access_location::host, access_mode::read);
     ArrayHandle<unsigned int> h_tag(m_pdata->getTags(), access_location::host, access_mode::read);
+    ArrayHandle<Scalar> h_gamma(m_gamma, access_location::host, access_mode::read);
 
     ArrayHandle<Scalar> h_wk(m_wk, access_location::host, access_mode::read);
     ArrayHandle<Scalar> h_Winv(m_Winv, access_location::host, access_mode::read);
     int pitch = m_Winv.getPitch();
     Scalar dW = Scalar(1)/Scalar(m_NW - Scalar(1));
+
+    const Scalar currentTemp = m_T->getValue(timestep);
+    const unsigned int D = Scalar(m_sysdef->getNDimensions());
     // v(t+deltaT) = v(t+deltaT/2) + 1/2 * a(t+deltaT)*deltaT
     for (unsigned int group_idx = 0; group_idx < group_size; group_idx++)
         {
@@ -313,14 +375,34 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
             }
         else
             {
-            // first, calculate acceleration from the net force
+            // first, calculate the BD forces
+            // Generate three random numbers
+            hoomd::detail::Saru saru(ptag, timestep, m_seed);
+            Scalar rx = gaussian_rng(saru, Scalar(1.0));
+            Scalar ry = gaussian_rng(saru, Scalar(1.0));
+            Scalar rz = gaussian_rng(saru, Scalar(1.0));
+
+            unsigned int type = __scalar_as_int(h_pos.data[j].w);
+            Scalar gamma = h_gamma.data[type];
+
+            // compute the bd force
+            Scalar coeff = fast::sqrt(Scalar(2.0) *gamma*currentTemp/m_deltaT); //version for Gaussian rng
+
+            if (m_noiseless_t)
+                coeff = Scalar(0.0);
+            Scalar bd_fx = rx*coeff - gamma*h_vel.data[j].x;
+            Scalar bd_fy = ry*coeff - gamma*h_vel.data[j].y;
+            Scalar bd_fz = rz*coeff - gamma*h_vel.data[j].z;
+
+            if (D < 3)
+                bd_fz = Scalar(0.0);
+            // then, calculate acceleration from the net force
             Scalar minv = Scalar(1.0) / h_vel.data[j].w;
-            h_accel.data[j].x = h_net_force.data[j].x*minv;
-            h_accel.data[j].y = h_net_force.data[j].y*minv;
-            h_accel.data[j].z = h_net_force.data[j].z*minv;
+            h_accel.data[j].x = (h_net_force.data[j].x + bd_fx)*minv;
+            h_accel.data[j].y = (h_net_force.data[j].y + bd_fy)*minv;
+            h_accel.data[j].z = (h_net_force.data[j].z + bd_fz)*minv;
 
             //Scatter
-            hoomd::detail::Saru saru(ptag, timestep, m_seed);
             Scalar total_rn = saru.s<Scalar>(0,1);
             Scalar W_rn = saru.s<Scalar>(0,1);
 
@@ -419,10 +501,12 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
 void export_TwoStepCustomScatter2D(py::module& m)
     {
     py::class_<TwoStepCustomScatter2D, std::shared_ptr<TwoStepCustomScatter2D> >(m, "TwoStepCustomScatter2D", py::base<IntegrationMethodTwoStep>())
-        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, unsigned int, unsigned int, unsigned int, bool >())
+        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, unsigned int, unsigned int, unsigned int, std::shared_ptr<Variant>, bool, bool >())
         .def("setLimit", &TwoStepCustomScatter2D::setLimit)
         .def("removeLimit", &TwoStepCustomScatter2D::removeLimit)
         .def("setZeroForce", &TwoStepCustomScatter2D::setZeroForce)
         .def("setTables", &TwoStepCustomScatter2D::setTables)
+        .def("setGamma", &TwoStepCustomScatter2D::setGamma)
+        .def("setT", &TwoStepCustomScatter2D::setT)
         ;
     }

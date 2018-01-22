@@ -760,7 +760,7 @@ class custom_scatter2D(_integration_method):
         integrate.nve(group=typeA, zero_force=True)
 
     """
-    def __init__(self, group, Nk, NW, seed, limit=None, zero_force=False):
+    def __init__(self, group, Nk, NW, seed, kT, noiseless_t=False, limit=None, zero_force=False):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -769,11 +769,14 @@ class custom_scatter2D(_integration_method):
         # create the compute thermo
         hoomd.compute._get_unique_thermo(group=group);
 
+        # setup the variant inputs
+        kT_variant = hoomd.variant._setup_variant_input(kT);
+
         # initialize the reflected c++ class
         if not hoomd.context.exec_conf.isCUDAEnabled():
-            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, kT_variant.cpp_variant, noiseless_t, False);
         else:
-            self.cpp_method = _md.TwoStepCustomScatter2DGPU(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+            self.cpp_method = _md.TwoStepCustomScatter2DGPU(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, kT_variant.cpp_variant, noiseless_t, False);
 
         # set the limit
         if limit is not None:
@@ -788,14 +791,17 @@ class custom_scatter2D(_integration_method):
         self.limit = limit
         self.Nk = Nk
         self.NW = NW
-        self.metadata_fields = ['group', 'limit', 'Nk', 'NW']
+        self.kT = kT
+        self.noiseless_t = noiseless_t
+        self.metadata_fields = ['group', 'limit', 'Nk', 'NW', 'kT', 'noiseless_t']
 
-    def set_params(self, limit=None, zero_force=None):
+    def set_params(self, limit=None, zero_force=None, kT=None):
         R""" Changes parameters of an existing integrator.
 
         Args:
             limit (bool): (if set) New limit value to set. Removes the limit if limit is False
             zero_force (bool): (if set) New value for the zero force option
+            kT (:py:mod:`hoomd.variant` or :py:obj:`float`): New temperature (if set) (in energy units).
 
         Examples::
 
@@ -815,6 +821,50 @@ class custom_scatter2D(_integration_method):
 
         if zero_force is not None:
             self.cpp_method.setZeroForce(zero_force);
+
+        if kT is not None:
+            # setup the variant inputs
+            kT = hoomd.variant._setup_variant_input(kT);
+            self.cpp_method.setT(kT.cpp_variant);
+            self.kT = kT
+
+
+
+    def set_gamma(self, a, gamma):
+        R""" Set gamma for a particle type.
+
+        Args:
+            a (str): Particle type name
+            gamma (float): :math:`\gamma` for particle type a (in units of force/velocity)
+
+        :py:meth:`set_gamma()` sets the coefficient :math:`\gamma` for a single particle type, identified
+        by name. The default is 1.0 if not specified for a type.
+
+        It is not an error to specify gammas for particle types that do not exist in the simulation.
+        This can be useful in defining a single simulation script for many different types of particles
+        even when some simulations only include a subset.
+
+        Examples::
+
+            scatter.set_gamma('A', gamma=2.0)
+
+        """
+        hoomd.util.print_status_line();
+        self.check_initialization();
+        a = str(a);
+
+        ntypes = hoomd.context.current.system_definition.getParticleData().getNTypes();
+        type_list = [];
+        for i in range(0,ntypes):
+            type_list.append(hoomd.context.current.system_definition.getParticleData().getNameByType(i));
+
+        # change the parameters
+        for i in range(0,ntypes):
+            if a == type_list[i]:
+                self.cpp_method.setGamma(i,gamma);
+
+
+
 
 
     def set_tables(self, wk, Winv, vmin, vmax):

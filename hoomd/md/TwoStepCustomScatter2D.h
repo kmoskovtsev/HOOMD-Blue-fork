@@ -7,6 +7,7 @@
 #include "IntegrationMethodTwoStep.h"
 //#include "hoomd/GPUArray.h"
 //#include "hoomd/Index1D.h"
+#include "hoomd/Variant.h"
 
 #ifndef __TWO_STEP_CUSTOMSCATTER_H__
 #define __TWO_STEP_CUSTOMSCATTER_H__
@@ -35,6 +36,8 @@ class TwoStepCustomScatter2D : public IntegrationMethodTwoStep
                    unsigned int Nk,
                    unsigned int NW,
                    unsigned int seed,
+                   std::shared_ptr<Variant> T,
+                   bool noiseless_t,
                    bool skip_restart=false);
         virtual ~TwoStepCustomScatter2D();
         // Set scattering tables
@@ -64,6 +67,18 @@ class TwoStepCustomScatter2D : public IntegrationMethodTwoStep
         //! Performs the second step of the integration
         virtual void integrateStepTwo(unsigned int timestep);
 
+        //! Set temperature
+        void setT(std::shared_ptr<Variant> T)
+            {
+            m_T = T;
+            }
+
+        //set gamma for a given particle type
+        void setGamma(unsigned int typ, Scalar gamma);
+
+        //resize gamma if the number of types changes
+        void slotNumTypesChange();
+
     protected:
         bool m_limit;       //!< True if we should limit the distance a particle moves in one step
         Scalar m_limit_val; //!< The maximum distance a particle is to move in one step
@@ -74,6 +89,9 @@ class TwoStepCustomScatter2D : public IntegrationMethodTwoStep
         GPUArray<Scalar> m_Winv; //!< Inverse cumulative probability distribution to scatter into angle d\theta
         Scalar3 m_params; //!< v_min, v_max, (v_max - v_min)/Nk - min and max velocities in scattering rate calculation
         unsigned int m_seed; //!< seed for random number generation
+        std::shared_ptr<Variant> m_T; //!< the temperature of the stochastic bath
+        GPUVector<Scalar> m_gamma; //!< List of per type gammas to use
+        bool m_noiseless_t; // supress the Langevin noise if true
     };
 
 //! Exports the TwoStepCustomScatter2D class to python
