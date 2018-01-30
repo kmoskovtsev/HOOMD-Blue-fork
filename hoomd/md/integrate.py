@@ -817,12 +817,14 @@ class custom_scatter2D(_integration_method):
             self.cpp_method.setZeroForce(zero_force);
 
 
-    def set_tables(self, wk, Winv, vmin, vmax):
+    def set_tables(self, wk, Winv, wik, Finv, vmin, vmax):
         R""" Set tabulated values of scattering rates and angle distributions
 
         Args:
-            wk (numpy array (Nk,)): total scattering rates for each k-point
-            Winv (numpy array (Nk, NW)): inverse cumulative distribution probability for angles
+            wk (numpy array (Nk,)): total elastic scattering rates for each k-point
+            Winv (numpy array (Nk, NW)): inverse cumulative distribution probability for angles in elastic scattering
+            wik (numpy array (Nk,)): total inelastic scattering rates for each k point
+            Finv (numpy array (Nk, Nk)): inverse cumulative distribution probability for k' in inelastic scattering
             vmin (float): speed corresponding to the lowest k value in wk table
             vmax (float): speed corresponding to the highest k value in wk table
         """
@@ -830,11 +832,17 @@ class custom_scatter2D(_integration_method):
         self.check_initialization();
         wk_table = _hoomd.std_vector_scalar(wk);
         Winv_table = _hoomd.std_vector_scalar(Winv.flatten());
+        wik_table = _hoomd.std_vector_scalar(wik);
+        Finv_table = _hoomd.std_vector_scalar(Finv.flatten());
         if len(wk) != self.Nk:
             raise ValueError("wk arrays size is not equal Nk")
         if len(Winv.flatten()) != self.Nk*self.NW:
             raise ValueError("Number of elements of Winv is not Nk*NW")
-        self.cpp_method.setTables(wk_table, Winv_table, vmin, vmax)
+        if len(wik) != self.Nk:
+            raise ValueError("wik arrays size is not equal Nk")
+        if len(Finv.flatten()) != self.Nk**2:
+            raise ValueError("Number of elements of Finv is not Nk*NW")
+        self.cpp_method.setTables(wk_table, Winv_table, wik_table, Finv_table, vmin, vmax)
         
 
 class langevin(_integration_method):

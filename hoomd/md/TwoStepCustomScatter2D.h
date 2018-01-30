@@ -40,6 +40,8 @@ class TwoStepCustomScatter2D : public IntegrationMethodTwoStep
         // Set scattering tables
         void setTables(const std::vector<Scalar> &wk,
                                      const std::vector<Scalar> &Winv,
+                                     const std::vector<Scalar> &wik,
+                                     const std::vector<Scalar> &Finv,
                                      const Scalar vmin,
                                      const Scalar vmax);
  
@@ -70,8 +72,10 @@ class TwoStepCustomScatter2D : public IntegrationMethodTwoStep
         bool m_zero_force;  //!< True if the integration step should ignore computed forces
         unsigned int m_Nk; //!< Number of k-points for scattering rates
         unsigned int m_NW; //!< Number of theta points to sample inverse cumulative distribution Winv
-        GPUArray<Scalar> m_wk; //!< total probability to scatter in a unit time vs k (1D array)
+        GPUArray<Scalar> m_wk; //!< total probability to scatter in a unit time vs k (1D array) for elastic scattering
         GPUArray<Scalar> m_Winv; //!< Inverse cumulative probability distribution to scatter into angle d\theta
+        GPUArray<Scalar> m_wik; //!< total probability to scatter in a unit time vs k (1D array) for inelastic scattering
+        GPUArray<Scalar> m_Finv; //!< Inverse cumulative probability to scatter to state with momentum magnitude k'
         Scalar3 m_params; //!< v_min, v_max, (v_max - v_min)/Nk - min and max velocities in scattering rate calculation
         unsigned int m_seed; //!< seed for random number generation
     };
