@@ -22,15 +22,17 @@ namespace py = pybind11;
     \param skip_restart Skip initialization of the restart information
     \param N_k number of k-points for scattering rate sampling
     \param N_W number of theta points to sample cumulative scattering distribution W
+    \param m_NY number of theta points used to sample angle distribution for inelastic scattering
 */
 TwoStepCustomScatter2D::TwoStepCustomScatter2D(std::shared_ptr<SystemDefinition> sysdef,
                        std::shared_ptr<ParticleGroup> group,
                        unsigned int Nk,
                        unsigned int NW,
+                       unsigned int NY,
                        unsigned int seed,
                        bool skip_restart)
     : IntegrationMethodTwoStep(sysdef, group), m_limit(false), m_limit_val(1.0), m_zero_force(false),
-    m_Nk(Nk), m_NW(NW), m_seed(seed)
+    m_Nk(Nk), m_NW(NW), m_NY(NY), m_seed(seed)
     {
     m_exec_conf->msg->notice(5) << "Constructing TwoStepCustomScatter2D" << endl;
 
@@ -59,13 +61,16 @@ TwoStepCustomScatter2D::TwoStepCustomScatter2D(std::shared_ptr<SystemDefinition>
     //Inelastic scattering tables
     GPUArray<Scalar> wik(Nk, m_exec_conf);
     GPUArray<Scalar> Finv(Nk, Nk, m_exec_conf);
+    GPUArray<Scalar> Yinv(Nk*Nk*NY, m_exec_conf);
     m_wik.swap(wik);
     m_Finv.swap(Finv);
+    m_Yinv.swap(Yinv);
 
     assert(!m_wk.isNull());
     assert(!m_Winv.isNull());
     assert(!m_wik.isNull());
     assert(!m_Finv.isNull());
+    assert(!m_Yinv.isNull());
     }
 
 TwoStepCustomScatter2D::~TwoStepCustomScatter2D()
@@ -100,6 +105,7 @@ void TwoStepCustomScatter2D::setTables(const std::vector<Scalar> &wk,
                                      const std::vector<Scalar> &Winv,
                                      const std::vector<Scalar> &wik,
                                      const std::vector<Scalar> &Finv,
+                                     const std::vector<Scalar> &Yinv,
                                      const Scalar vmin,
                                      const Scalar vmax)
     {
@@ -110,9 +116,11 @@ void TwoStepCustomScatter2D::setTables(const std::vector<Scalar> &wk,
     ArrayHandle<Scalar> h_wik(m_wik, access_location::host, access_mode::readwrite);
     ArrayHandle<Scalar> h_Finv(m_Finv, access_location::host, access_mode::readwrite);
     unsigned int pitch_F = m_Finv.getPitch();
+    ArrayHandle<Scalar> h_Yinv(m_Yinv, access_location::host, access_mode::readwrite);
     m_params.x = vmin;
     m_params.y = vmax;
     m_params.z = (vmax - vmin)/(Scalar(m_Nk) - 1);
+    //Elastic scattering tables
     for (unsigned int i = 0; i < m_Nk; i++)
         {
         h_wk.data[i] = wk[i];
@@ -122,12 +130,17 @@ void TwoStepCustomScatter2D::setTables(const std::vector<Scalar> &wk,
             }
         }
 
+    //inelastic scattering tables
     for (unsigned int i = 0; i < m_Nk; i++)
         {
         h_wik.data[i] = wik[i];
         for (unsigned int j = 0; j < m_Nk; j++)
             {
             h_Finv.data[i*pitch_F + j] = Finv[i*m_Nk + j];
+            for (unsigned int p = 0; p < m_NY; p++)
+                {
+                h_Yinv.data[i*m_Nk*m_NY + j*m_NY + p] = Yinv[i*m_Nk*m_NY + j*m_NY + p];
+                }
             }
         }
     }
@@ -327,10 +340,12 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
 
     ArrayHandle<Scalar> h_wik(m_wik, access_location::host, access_mode::read);
     ArrayHandle<Scalar> h_Finv(m_Finv, access_location::host, access_mode::read);
+    ArrayHandle<Scalar> h_Yinv(m_Yinv, access_location::host, access_mode::read);
     int pitch_in = m_Finv.getPitch();
 
-    Scalar dW = Scalar(1)/Scalar(m_NW - Scalar(1));
-    Scalar dF = Scalar(1)/Scalar(m_Nk - Scalar(1));
+    Scalar dW = Scalar(1)/Scalar(m_NW - 1);
+    Scalar dF = Scalar(1)/Scalar(m_Nk - 1);
+    Scalar dY = Scalar(1)/Scalar(m_NY - 1);
 
     // v(t+deltaT) = v(t+deltaT/2) + 1/2 * a(t+deltaT)*deltaT
     for (unsigned int group_idx = 0; group_idx < group_size; group_idx++)
@@ -396,15 +411,34 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
             Scalar w_in = h_wik.data[i_k] + (h_wik.data[i_k + 1] - h_wik.data[i_k])*alpha_k;
             if ( (total_rn_in < m_deltaT*w_in) && in_boundaries)
                 {
+                // Determine vp magnitude
                 Scalar F_rn = saru.s<Scalar>(0,1);
-                Scalar phi = Scalar(2)*Scalar(M_PI)*saru.s<Scalar>(0,1);
                 int i_F = (int)floor(F_rn/dF);
                 Scalar alpha_F = F_rn/dF - i_F;
                 Scalar vp_ik = (1 - alpha_F)*h_Finv.data[i_k*pitch_in + i_F] + alpha_F*h_Finv.data[i_k*pitch_in + i_F + 1];
                 Scalar vp_ikp = (1 - alpha_F)*h_Finv.data[(i_k + 1)*pitch_in + i_F] + alpha_F*h_Finv.data[(i_k + 1)*pitch_in + i_F + 1];
                 // new value of velocity v':
-                Scalar vp = (1 - alpha_k)*vp_ik + alpha_k*vp_ikp; 
-                //setve v = v' with random angle
+                Scalar vp = (1 - alpha_k)*vp_ik + alpha_k*vp_ikp;
+
+                //Scalar phi = Scalar(2)*Scalar(M_PI)*saru.s<Scalar>(0,1);
+                //Determine scattering angle by trilinear interpolation of Yinv
+                Scalar Y_rn = saru.s<Scalar>(0,1);
+                int i_Y = (int)floor(Y_rn/dY);
+                Scalar alpha_Y = Y_rn/dY - i_Y;
+                //coefficients for tri-linear interpolation
+                Scalar phi_ik_iF = (1-alpha_Y)*h_Yinv.data[i_k*m_Nk*m_NY + i_F*m_NY + i_Y] + alpha_Y*h_Yinv.data[i_k*m_Nk*m_NY + i_F*m_NY + i_Y + 1];
+                Scalar phi_ik_iFp = (1-alpha_Y)*h_Yinv.data[i_k*m_Nk*m_NY + (i_F + 1)*m_NY + i_Y] 
+                    + alpha_Y*h_Yinv.data[i_k*m_Nk*m_NY + (i_F + 1)*m_NY + i_Y + 1];
+                Scalar phi_ikp_iF = (1-alpha_Y)*h_Yinv.data[(i_k+1)*m_Nk*m_NY + i_F*m_NY + i_Y] 
+                    + alpha_Y*h_Yinv.data[(i_k+1)*m_Nk*m_NY + i_F*m_NY + i_Y + 1];
+                Scalar phi_ikp_iFp = (1-alpha_Y)*h_Yinv.data[(i_k+1)*m_Nk*m_NY + (i_F+1)*m_NY + i_Y] 
+                    + alpha_Y*h_Yinv.data[(i_k+1)*m_Nk*m_NY + (i_F+1)*m_NY + i_Y + 1];
+
+                Scalar phi_ik = (1 - alpha_F)*phi_ik_iF + alpha_F*phi_ik_iFp;
+                Scalar phi_ikp = (1 - alpha_F)*phi_ikp_iF + alpha_F*phi_ikp_iFp;
+                Scalar phi = (1 - alpha_k)*phi_ik + alpha_k*phi_ikp;
+
+                //set velocity v = v' with random angle
                 h_vel.data[j].x = vp*fast::cos(phi);
                 h_vel.data[j].y = vp*fast::sin(phi);
                 }
@@ -472,7 +506,7 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
 void export_TwoStepCustomScatter2D(py::module& m)
     {
     py::class_<TwoStepCustomScatter2D, std::shared_ptr<TwoStepCustomScatter2D> >(m, "TwoStepCustomScatter2D", py::base<IntegrationMethodTwoStep>())
-        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, unsigned int, unsigned int, unsigned int, bool >())
+        .def(py::init< std::shared_ptr<SystemDefinition>, std::shared_ptr<ParticleGroup>, unsigned int, unsigned int, unsigned int, unsigned int, bool >())
         .def("setLimit", &TwoStepCustomScatter2D::setLimit)
         .def("removeLimit", &TwoStepCustomScatter2D::removeLimit)
         .def("setZeroForce", &TwoStepCustomScatter2D::setZeroForce)
