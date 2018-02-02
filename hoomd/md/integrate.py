@@ -725,11 +725,9 @@ class custom_scatter2D(_integration_method):
     Args:
         group (:py:mod:`hoomd.group`): Group of particles on which to apply this method.
         Nk (int) number of k-points used in total scattering rate calculation
-
         NW (int) number of points for sampling W (cumulative angle probability distribution)
-
+        Nt (int) number of points for sampling scattering angle in inelastic scattering
         seed (int) seed for random number generation
-
         limit (bool): (optional) Enforce that no particle moves more than a distance of \a limit in a single time step
         zero_force (bool): When set to true, particles in the \a group are integrated forward in time with constant
           velocity and any net force on them is ignored.
@@ -760,7 +758,7 @@ class custom_scatter2D(_integration_method):
         integrate.nve(group=typeA, zero_force=True)
 
     """
-    def __init__(self, group, Nk, NW, seed, limit=None, zero_force=False):
+    def __init__(self, group, Nk, NW, NY, seed, limit=None, zero_force=False):
         hoomd.util.print_status_line();
 
         # initialize base class
@@ -771,9 +769,10 @@ class custom_scatter2D(_integration_method):
 
         # initialize the reflected c++ class
         if not hoomd.context.exec_conf.isCUDAEnabled():
-            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, NY, seed, False);
         else:
-            self.cpp_method = _md.TwoStepCustomScatter2DGPU(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, seed, False);
+            self.cpp_method = _md.TwoStepCustomScatter2D(hoomd.context.current.system_definition, group.cpp_group, Nk, NW, NY, seed, False);
+            print("cpp version of CustomScatter2D is used since the GPU version is not implemented");
 
         # set the limit
         if limit is not None:
@@ -788,7 +787,8 @@ class custom_scatter2D(_integration_method):
         self.limit = limit
         self.Nk = Nk
         self.NW = NW
-        self.metadata_fields = ['group', 'limit', 'Nk', 'NW']
+        self.NY = NY
+        self.metadata_fields = ['group', 'limit', 'Nk', 'NW', 'NY']
 
     def set_params(self, limit=None, zero_force=None):
         R""" Changes parameters of an existing integrator.
@@ -817,7 +817,7 @@ class custom_scatter2D(_integration_method):
             self.cpp_method.setZeroForce(zero_force);
 
 
-    def set_tables(self, wk, Winv, wik, Finv, vmin, vmax):
+    def set_tables(self, wk, Winv, wik, Finv, Yinv, vmin, vmax):
         R""" Set tabulated values of scattering rates and angle distributions
 
         Args:
@@ -834,6 +834,7 @@ class custom_scatter2D(_integration_method):
         Winv_table = _hoomd.std_vector_scalar(Winv.flatten());
         wik_table = _hoomd.std_vector_scalar(wik);
         Finv_table = _hoomd.std_vector_scalar(Finv.flatten());
+        Yinv_table = _hoomd.std_vector_scalar(Yinv.flatten());
         if len(wk) != self.Nk:
             raise ValueError("wk arrays size is not equal Nk")
         if len(Winv.flatten()) != self.Nk*self.NW:
@@ -841,8 +842,10 @@ class custom_scatter2D(_integration_method):
         if len(wik) != self.Nk:
             raise ValueError("wik arrays size is not equal Nk")
         if len(Finv.flatten()) != self.Nk**2:
-            raise ValueError("Number of elements of Finv is not Nk*NW")
-        self.cpp_method.setTables(wk_table, Winv_table, wik_table, Finv_table, vmin, vmax)
+            raise ValueError("Number of elements of Finv is not Nk*Nk")
+        if len(Yinv.flatten()) != self.Nk**2*self.NY:
+            raise ValueError("Number of elements of Yinv is not Nk*Nk*Nt")
+        self.cpp_method.setTables(wk_table, Winv_table, wik_table, Finv_table, Yinv_table, vmin, vmax)
         
 
 class langevin(_integration_method):
