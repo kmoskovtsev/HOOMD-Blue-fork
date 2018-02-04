@@ -10,6 +10,7 @@
 #include "PotentialExternal.h"
 #include "EvaluatorExternalPeriodic.h"
 #include "EvaluatorExternalPeriodicCos.h"
+#include "EvaluatorExternalGaussian.h"
 #include "EvaluatorExternalElectricField.h"
 #include "EvaluatorWalls.h"
 #include "AllPairPotentials.h"
@@ -29,6 +30,8 @@
 //! External potential to impose periodic structure
 typedef PotentialExternal<EvaluatorExternalPeriodic> PotentialExternalPeriodic;
 typedef PotentialExternal<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCos;
+//! local potential
+typedef PotentialExternal<EvaluatorExternalGaussian> PotentialExternalGaussian;
 
 
 //! Electric field
@@ -47,6 +50,7 @@ typedef PotentialExternal<EvaluatorWalls<EvaluatorPairMorse> > WallsPotentialMor
 //! External potential to impose periodic structure on the GPU
 typedef PotentialExternalGPU<EvaluatorExternalPeriodic> PotentialExternalPeriodicGPU;
 typedef PotentialExternalGPU<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCosGPU;
+typedef PotentialExternalGPU<EvaluatorExternalGaussian> PotentialExternalGaussian;
 typedef PotentialExternalGPU<EvaluatorExternalElectricField> PotentialExternalElectricFieldGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairLJ> > WallsPotentialLJGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairSLJ> > WallsPotentialSLJGPU;
