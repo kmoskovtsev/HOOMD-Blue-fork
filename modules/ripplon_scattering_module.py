@@ -93,9 +93,6 @@ def w_theta(N_theta, T, k):
     w_arr_res[1:-1] = T*hbar/(8*np.pi*alpha*m_e*lmbd**2)*(q_arr[1:-1]*phi_x(0.5*q_arr[1:-1]*lmbd))**2
     return w_arr_res, theta_arr
 
-N_k = 1000
-N_theta = 200
-k_arr = np.linspace(1, 500, N_k) # k correspoonding to T from 0.0005 to 100 (k=1 is quantum threshold as well)
 
 def compute_w_k(k_arr, T, N_theta):
     """
