@@ -361,6 +361,57 @@ class periodic_cos(_external_force):
 
 
 
+class gaussian(_external_force):
+    R""" One-dimension periodic potential.
+
+    :py:class:`periodic` specifies that an external force should be
+    added to every particle in the simulation to simulate local perturbations. The force parameters can be set on a per particle
+    type basis.
+
+    The external potential :math:`V(\vec{r})` is implemented using the following formula:
+
+    .. math::
+
+       V(\vec{r}) = A * \exp\left( -(\vec{r} - \vec{r}_c)^2/(2\sigma^2) \right)
+
+    where :math:`A` is the potential strength, :math:`\vec{r}` is the particle position
+    :math:`\vec{r}_c` is the potential center, \sigma the gaussian width.
+
+    Examples::
+
+        # Apply a periodic composition modulation along the first lattice vector
+        gaussian = external.gaussian()
+        gaussian.force_coeff.set('A', x=0, y=0, A=1.0, sigma=2.0)
+    """
+    def __init__(self, name=""):
+        hoomd.util.print_status_line();
+
+        # initialize the base class
+        _external_force.__init__(self, name);
+
+        # create the c++ mirror class
+        if not hoomd.context.exec_conf.isCUDAEnabled():
+            self.cpp_force = _md.PotentialExternalGaussian(hoomd.context.current.system_definition,self.name);
+        else:
+            self.cpp_force = _md.PotentialExternalGaussianGPU(hoomd.context.current.system_definition,self.name);
+
+        hoomd.context.current.system.addCompute(self.cpp_force, self.force_name);
+
+        # setup the coefficient options
+        self.required_coeffs = ['x','y','A','sigma']
+
+    def process_coeff(self, coeff):
+        A = coeff['A'];
+        sigma = coeff['sigma'];
+        x = coeff['x'];
+        y = coeff['y']
+
+        return _hoomd.make_scalar4(x, y, A, sigma);
+
+
+
+
+
 
 class e_field(_external_force):
     R""" Electric field.
