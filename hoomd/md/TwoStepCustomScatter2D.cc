@@ -411,6 +411,9 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
             Scalar w_in = h_wik.data[i_k] + (h_wik.data[i_k + 1] - h_wik.data[i_k])*alpha_k;
             if ( (total_rn_in < m_deltaT*w_in) && in_boundaries)
                 {
+                Scalar vx = h_vel.data[j].x;
+                Scalar vy = h_vel.data[j].y;
+                Scalar v_abs = fast::sqrt(fast::pow(vx,2) + fast::pow(vy,2));
                 // Determine vp magnitude
                 Scalar F_rn = saru.s<Scalar>(0,1);
                 int i_F = (int)floor(F_rn/dF);
@@ -439,8 +442,13 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
                 Scalar phi = (1 - alpha_k)*phi_ik + alpha_k*phi_ikp;
 
                 //set velocity v = v' with random angle
-                h_vel.data[j].x = vp*fast::cos(phi);
-                h_vel.data[j].y = vp*fast::sin(phi);
+                if (v_abs != 0)
+                    {
+                    Scalar vpx = vx*vp/v_abs;
+                    Scalar vpy = vy*vp/v_abs;
+                    h_vel.data[j].x = vpx*fast::cos(phi) - vpy*fast::sin(phi);
+                    h_vel.data[j].y = vpx*fast::sin(phi) + vpy*fast::cos(phi);
+                    }
                 }
             }
 
