@@ -50,7 +50,7 @@ typedef PotentialExternal<EvaluatorWalls<EvaluatorPairMorse> > WallsPotentialMor
 //! External potential to impose periodic structure on the GPU
 typedef PotentialExternalGPU<EvaluatorExternalPeriodic> PotentialExternalPeriodicGPU;
 typedef PotentialExternalGPU<EvaluatorExternalPeriodicCos> PotentialExternalPeriodicCosGPU;
-typedef PotentialExternalGPU<EvaluatorExternalGaussian> PotentialExternalGaussian;
+typedef PotentialExternalGPU<EvaluatorExternalGaussian> PotentialExternalGaussianGPU;
 typedef PotentialExternalGPU<EvaluatorExternalElectricField> PotentialExternalElectricFieldGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairLJ> > WallsPotentialLJGPU;
 typedef PotentialExternalGPU<EvaluatorWalls<EvaluatorPairSLJ> > WallsPotentialSLJGPU;

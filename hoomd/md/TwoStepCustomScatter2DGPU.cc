@@ -24,7 +24,7 @@ TwoStepCustomScatter2DGPU::TwoStepCustomScatter2DGPU(std::shared_ptr<SystemDefin
                              unsigned int Nk,
                              unsigned int NW,
                              unsigned int seed)
-    : TwoStepCustomScatter2D(sysdef, group, Nk, NW, seed)
+    : TwoStepCustomScatter2D(sysdef, group, Nk, NW, 10, seed, false)
     {
     // only one GPU is supported
     if (!m_exec_conf->isCUDAEnabled())

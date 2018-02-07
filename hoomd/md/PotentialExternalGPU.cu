@@ -7,6 +7,7 @@
 #include "EvaluatorWalls.h"
 #include "EvaluatorExternalPeriodic.h"
 #include "EvaluatorExternalPeriodicCos.h"
+#include "EvaluatorExternalGaussian.h"
 #include "EvaluatorExternalElectricField.h"
 #include "EvaluatorPairLJ.h"
 #include "EvaluatorPairGauss.h"
