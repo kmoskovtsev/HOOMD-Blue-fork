@@ -5,6 +5,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from hoomd.data import boxdim
+from scipy.spatial import Delaunay
 
 def __init__():
     """
@@ -13,18 +14,19 @@ def __init__():
     """
     pass
 
-def correct_jumps(pos, pos_m1, lx, ly):
+def correct_jumps(pos, pos_m1_cntn, pos_m1_inbox, lx, ly):
     """    
     Correct jumps over the periodic boundary. Jumps by lx or ly make diffusion calculation
     nonsense.
     pos - positions in current frame
-    pos_m1 - position in the previous frame
+    pos_m1_cntc - "continuous" position in the previous frame: corrected for jumps from previous step
+    pos_m1_inbox - "raw" position in the previous frame: inside simulation box
     lx, ly - unit cell length and width
     
     return: corrected positions in current frame
     """
     
-    dr = pos - pos_m1
+    dr = pos - pos_m1_inbox
     # x-direction jumps:
     ind = np.where(dr[:,0] > lx/2)
     dr[ind, 0] = dr[ind, 0] - lx
@@ -37,7 +39,7 @@ def correct_jumps(pos, pos_m1, lx, ly):
     ind = np.where(dr[:,1] < - ly/2)
     dr[ind, 1] = dr[ind, 1] + ly
 
-    return pos_m1 + dr
+    return pos_m1_cntn + dr
     
 
 
@@ -97,14 +99,16 @@ def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
         folder_path = folder_path + '/'
 
     for i, f_name in enumerate(f_list):
-        print(f_name, end = '\r')
+        print(f_name)
         with gsd.fl.GSDFile(folder_path + f_name, 'rb') as f:
             n_frames = f.nframes
             box = f.read_chunk(frame=0, name='configuration/box')
             half_frames = int(n_frames/2) - 1 #sligtly less than half to avoid out of bound i
             if useframes < 1 or useframes > half_frames:
                 useframes = half_frames
-            t_step = f.read_chunk(frame=0, name='configuration/step')
+            t_step0 = f.read_chunk(frame=0, name='configuration/step')
+            t_step1 = f.read_chunk(frame=1, name='configuration/step')
+            snap_period = t_step1[0] - t_step0[0]
             n_p = f.read_chunk(frame=0, name='particles/N')
             if i == 0: #create square-average displacement once
                 x_sq_av = np.zeros((useframes, len(f_list)))
@@ -113,10 +117,12 @@ def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
                 pos_0 = f.read_chunk(frame=t_origin, name='particles/position')
                 mean_pos_0 = np.mean(pos_0, axis = 0)
                 pos = pos_0
+                pos_raw = pos_0
                 for j_frame in range(useframes):
                     pos_m1 = pos
-                    pos = f.read_chunk(frame=j_frame + t_origin, name='particles/position') - pos_0
-                    pos = correct_jumps(pos, pos_m1, box[0], box[1])
+                    pos_m1_raw = pos_raw
+                    pos_raw = f.read_chunk(frame=j_frame + t_origin, name='particles/position') - pos_0
+                    pos = correct_jumps(pos_raw, pos_m1, pos_m1_raw, box[0], box[1])
                     if center_fixed:
                         pos -= np.mean(pos, axis = 0) - mean_pos_0 #correct for center of mass movement
                     
@@ -126,7 +132,7 @@ def diffusion_from_gsd(folder_path, center_fixed = True, useframes = -1):
             y_sq_av[:, i] /= (n_frames - useframes - 1)
             # OLS estimate for beta_x[0] + beta_x[1]*t = <|x_i(t) - x_i(0)|^2>
             a = np.ones((useframes, 2)) # matrix a = ones(half_frames) | (0; dt; 2dt; 3dt; ...)
-            a[:,1] = t_step*dt_list[i]*np.cumsum(np.ones(useframes), axis = 0) - dt_list[i]
+            a[:,1] = snap_period*dt_list[i]*np.cumsum(np.ones(useframes), axis = 0) - dt_list[i]
             b_cutoff = int(useframes/10) #cutoff to get only linear part of x_sq_av, makes results a bit more clean
             beta_x = np.linalg.lstsq(a[b_cutoff:, :], x_sq_av[b_cutoff:,i], rcond=-1)
             beta_y = np.linalg.lstsq(a[b_cutoff:, :], y_sq_av[b_cutoff:,i], rcond=-1)
@@ -192,6 +198,65 @@ def find_neighbors(pos, box, rcut = 1.4):
             neighbor_list[i, j] = ind
             dist_list[i, j] = box_dist[j]
     return neighbor_list, neighbor_num
+    
+def create_virtual_layer(pos, box):
+    """
+    Create a virtual layer around the simulation box of ~2 interelectron distances of particles that are periodic replicas from the
+    simulation box.
+    """
+    N = pos.shape[0]
+    a = 2*np.sqrt(box.Lx*box.Ly/N) # approximately 1-3 interelectron distances
+    # Add full periodic replicas around the box
+    shift_arr = [-1, 0, 1]
+    full_virtual_pos = np.zeros((N*9, 3))
+    counter = 0
+    for i in shift_arr:
+        for j in shift_arr:
+            #i,j = 0,0 when counter=4
+            pos_shifted = np.zeros(pos.shape)
+            pos_shifted[:,0] = pos[:,0] + i*box.Lx
+            pos_shifted[:,1] = pos[:,1] + j*box.Ly
+            full_virtual_pos[counter*N:(counter + 1)*N, :] = pos_shifted
+            counter += 1
+    # Crop the extended virtual box to the original box plus a layer of width `a`
+    box_ind = np.where((np.abs(full_virtual_pos[:,0]) < 0.5*box.Lx + a)*(np.abs(full_virtual_pos[:,1]) < 0.5*box.Ly + a))[0]
+    crop_virtual_pos = full_virtual_pos[box_ind, :]
+    
+    return crop_virtual_pos, box_ind
+                
+
+    
+def find_neighbors_delone(pos, box):
+    """ Find neighbors for each particle with the Delone triangulation methos.
+    \param pos - N x 3 array of positions
+    \param box - hoomd box object, simulation box
+    \param rcut - cutoff radius for neighbors
+    Return neighbor_list and neighbor_num.
+    neighbor_list - N x 30 array of int, each row i containing indices of neighbors of i-th particle,
+                    including the particle itself.
+                    The remaining part of the row is filled with -1 (e.g. for 6 neighbors, remaining 23 sites are -1).
+    neighbor_num - int array of size N containing numbers of neighbors for each particle. 
+    """
+    N = pos.shape[0]
+    neighbor_list = np.zeros((pos.shape[0], 30), dtype=int) - 1
+    neighbor_num = np.zeros(pos.shape[0], dtype = int)
+    dist_list = np.zeros((pos.shape[0], 30), dtype=float) - 1
+    virtual_pos, virtual_ind = create_virtual_layer(pos, box)
+    tri = Delaunay(virtual_pos[:, 0:2])
+    (indices, indptr) = tri.vertex_neighbor_vertices
+    for vi in range(virtual_pos.shape[0]):
+        i = virtual_ind[vi] #index of a particle in the big virtual box with full repeated cells
+        i_real = i%N
+        # for real particles in the real box
+        if i >= N*4 and i < N*5:
+            # indices of neighbors in the vitrual box
+            vi_neighb = indptr[indices[vi]:indices[vi+1]]
+            # recover real neighbor indices in the original box
+            i_neighb = virtual_ind[vi_neighb]%N
+            n_neighb = len(i_neighb)
+            neighbor_list[i_real, :n_neighb] = i_neighb
+            neighbor_num[i_real] = n_neighb
+    return neighbor_list, neighbor_num
 
 
     
@@ -232,18 +297,22 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
         pos = np.zeros((n_frames, n_p[0], 2))
         neighbor_num = np.zeros((n_frames, int(n_p)), dtype = int)
         pos_frame = f_gsd.read_chunk(frame=0, name='particles/position')
+        pos_frame_raw = pos_frame
         mean_pos_0 = np.mean(pos_frame, axis = 0)
         for j_frame in range(n_frames):
             pos_m1 = pos_frame
-            pos_frame = f_gsd.read_chunk(frame=j_frame, name='particles/position')
+            pos_m1_raw = pos_frame_raw
+            pos_frame_raw = f_gsd.read_chunk(frame=j_frame, name='particles/position')
             if not periodic:
-                pos_frame = correct_jumps(pos_frame, pos_m1, box[0], box[1])
+                pos_frame = correct_jumps(pos_frame_raw, pos_m1, pos_m1_raw, box[0], box[1])
+            else:
+                pos_frame = pos_frame_raw
             if center_fixed:
                 pos_frame -= np.mean(pos_frame, axis = 0) - mean_pos_0
             pos[j_frame, :, :] = pos_frame[:, 0:2]
             if neighb:
                 boxdim_box = boxdim(box[0], box[1], box[2])
-                neighbor_list, neighbor_num[j_frame, :] = find_neighbors(pos[j_frame, :,:], boxdim_box, rcut = rcut)
+                neighbor_list, neighbor_num[j_frame, :] = find_neighbors_delone(pos[j_frame, :,:], boxdim_box, rcut = rcut)
     
     fig = plt.figure(figsize = figsize)
     ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
@@ -267,7 +336,7 @@ def animate_gsd(fpath, savefile = None, periodic = False, center_fixed = True, i
         five_scat = ax.scatter(empty_pos, empty_pos)
     time_text = ax.text(0.02, 1.05, '', transform=ax.transAxes)
 
-    animation = FuncAnimation(fig, update, interval=100, frames=n_frames, blit=True)
+    animation = FuncAnimation(fig, update, interval=interval, frames=n_frames, blit=True)
     
     if not savefile == None:
         try:
@@ -476,6 +545,57 @@ def psi_order(pos, box, nx=100, ny=100, rcut=1.4):
             dist = np.sqrt(np.sum((box_pos - nr)**2, axis = 1))
             box_neighbors = np.where(dist < rcut)[0]
             nb_rv = box_pos[box_neighbors, :] - nr # radius-vectors to nearest neighbors                   
+            nb_dist = np.sqrt(np.sum(nb_rv**2, axis = 1))
+            nb_rv = nb_rv[np.where(nb_dist != 0)]
+            nb_dist = nb_dist[np.where(nb_dist != 0)]
+            cos_theta = nb_rv[:,0]/nb_dist
+            theta = np.arccos(cos_theta) # sign of the angle still uncertain
+            neg_y_ind = np.where(nb_rv[:,1] < 0)[0]
+            theta[neg_y_ind] = 2*np.pi - theta[neg_y_ind] #resolve uncertainty from arccos
+            psi[j,i] = np.mean(np.exp(1j*6*theta))
+    return psi
+    
+    
+def psi_order_delone(pos, box, nx=100, ny=100, rcut=1.4):
+    """ 
+    \param pos - N x 3 array of positions
+    \param box - hoomd box object, simulation box
+    \param rcut - cutoff radius for neighbors
+    Return neighbor_list and neighbor_num.
+    neighbor_list - N x 30 array of int, each row i containing indices of neighbors of i-th particle,
+                    including the particle itself.
+                    The remaining part of the row is filled with -1 (e.g. for 6 neighbors, remaining 23 sites are -1).
+    neighbor_num - int array of size N containing numbers of neighbors for each particle. 
+    """
+    #neighbor_list = np.zeros((pos.shape[0], 30), dtype=int) - 1
+    #neighbor_num = np.zeros(pos.shape[0], dtype = int)
+    dist_list = np.zeros((pos.shape[0], 30), dtype=float) - 1
+    psi = np.zeros((ny, nx), dtype=complex)
+    hx = box.Lx/nx
+    hy = box.Ly/ny
+    X = np.linspace(-0.5*box.Lx, 0.5*box.Lx - hx, nx)
+    Y = np.linspace(-0.5*box.Ly, 0.5*box.Ly - hy, ny)
+    r = np.zeros(3)
+    n_list, n_num = find_neighbors_delone(pos, box)
+    
+    for i in range(nx):
+        for j in range(ny):
+            r[0] = X[i]
+            r[1] = Y[j]
+            pos_ref = reshape_to_box(pos, r, box)
+            r_ind = np.where((pos_ref[:,0] > -rcut)*(pos_ref[:,0] < rcut)*(pos_ref[:,1] > -rcut)*(pos_ref[:,1] < rcut))[0]
+            r_pos = pos_ref[r_ind, :]
+            dist = np.sqrt(np.sum(r_pos**2, axis = 1))
+            r_nearest_ind = np.argmin(dist)
+            nearest_ind = r_ind[r_nearest_ind]
+            nr = pos_ref[nearest_ind, :] # coordinate of nearest particle in r-centered box
+            #box_ind = np.where((pos_ref[:,0] > -rcut + nr[0])*(pos_ref[:,0] < rcut + nr[0])*\
+            #                   (pos_ref[:,1] > -rcut + nr[1])*(pos_ref[:,1] < rcut + nr[1]))[0]
+            #box_pos = pos_ref[box_ind, :]
+            #dist = np.sqrt(np.sum((box_pos - nr)**2, axis = 1))
+            #box_neighbors = np.where(dist < rcut)[0]
+            neighbors_ind = n_list[nearest_ind, :n_num[nearest_ind]]
+            nb_rv = pos_ref[neighbors_ind, :] - nr # radius-vectors to nearest neighbors                   
             nb_dist = np.sqrt(np.sum(nb_rv**2, axis = 1))
             nb_rv = nb_rv[np.where(nb_dist != 0)]
             nb_dist = nb_dist[np.where(nb_dist != 0)]

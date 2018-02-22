@@ -78,6 +78,8 @@ def w_theta(N_theta, T, k):
     Dykman, M. I., et.al. Phys. Rev. B 55.24 (1997): 16249.
     Equations (89)-(90)
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     #theta_arr = np.linspace(2*np.pi/N_theta, 2*np.pi*(1 - 1/N_theta), N_theta)
     theta_arr = np.linspace(0, 2*np.pi, N_theta)
     
@@ -103,6 +105,8 @@ def compute_w_k(k_arr, T, N_theta):
     return w_k_res - total scattering rate vs k (array of size N_k)
            w_k_theta - 2D array, each row w_k_theta[i,:] is w(theta) distribution for k_i
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     N_k = len(k_arr)
     w_k_res = np.zeros(k_arr.shape)
     w_k_theta = np.zeros((N_k, N_theta)) # w_theta_k[i,j] = w(k_i, \theta_j) 
@@ -124,6 +128,8 @@ def compute_cumul_W(w_k_theta, w_k, N_W):
            theta_resampled array, shape (N_k, N_W), each row i being an array of new theta sampling for k[i]
            W_cumul array (N_k, N_theta), cumulative distribution W before resampling 
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     theta_arr = np.linspace(0, 2*np.pi, w_k_theta.shape[1])
     # Essentially simps integration:
     w_k_theta_mid = 0.5*(w_k_theta + np.roll(w_k_theta, 1, axis=1))
