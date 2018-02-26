@@ -65,7 +65,7 @@ def V_short(mesh_x, mesh_y, charge, eta):
     """
     # Retrieve geometry:
     (a1, a2, lx, ly) = ai_from_mesh(mesh_x, mesh_y)
-    
+    det_a = a1[0]*a2[1] - a1[1]*a2[0] # determinant of a-matrix
     # Determine which periodic images give significant contribution
     # These formula ensure exp( - r/eta) < 1e-10 for contributions from the most
     # distant significant images to any point in unit cell.
@@ -92,6 +92,7 @@ def V_short(mesh_x, mesh_y, charge, eta):
         for j in range(-(ny - 1), ny + 1):
             r_ij = r_from_ri(i*a1 + j*a2, mesh_x, mesh_y) # distance from image (i,j) to each grid point
             V += phi_s(r_ij, eta)
+    V -= 4*np.sqrt(np.pi)*eta/det_a
     V *= charge**2
     return V
     

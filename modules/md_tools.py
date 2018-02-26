@@ -3,6 +3,8 @@ import gsd.fl
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.colors import BoundaryNorm
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 from hoomd.data import boxdim
 from scipy.spatial import Delaunay
@@ -499,11 +501,23 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
     return g
     
     
-def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none', alpha=1):
-    fig, ax = plt.subplots(1, 1, figsize=figsize)
-    cax = ax.imshow(np.transpose(g), cmap = cmap, extent = (-box.Lx/2, box.Lx/2, -box.Ly/2, box.Ly/2),\
-    origin='lower', interpolation = interpolation, alpha=alpha)
-    ax.scatter(0,0, c='r', marker = '+')
+def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none', nbins=50, alpha=1, fig=None, ax=None, origin_marker=True):
+
+    if ax==None or fig==None:
+        fig = plt.figure(figsize = figsize)
+        ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                             xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
+    x = np.linspace(-box.Lx/2, box.Lx/2, g.shape[0])
+    y = np.linspace(-box.Ly/2, box.Ly/2, g.shape[1])
+    X, Y = np.meshgrid(x, y)
+    levels = MaxNLocator(nbins=nbins).tick_values(g.min(), g.max())
+    cmap = plt.get_cmap(cmap)
+    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
+    cax = ax.pcolor(X, Y, np.transpose(g), cmap = cmap,\
+    alpha=alpha, norm=norm, edgecolor='none', antialiaseds=False)
+    if origin_marker:
+        ax.scatter(0,0, c='r', marker = '+')
+    fig.colorbar(cax, ax=ax)
     return fig, ax, cax
     
     
@@ -606,6 +620,64 @@ def psi_order_delone(pos, box, nx=100, ny=100, rcut=1.4):
             psi[j,i] = np.mean(np.exp(1j*6*theta))
     return psi
 
+def psi6_order_from_gsd(fpath, frame=0):
+    with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
+        n_frames_total = f_gsd.nframes
+        if frame > n_frames_total:
+            raise ValueError('frames beyond n_frames_total')
+        #translate negative indices into positive domain:
+        abs_frame = frame -(frame//n_frames_total)*n_frames_total
+        pos = f_gsd.read_chunk(frame=abs_frame, name='particles/position')
+        box_array = f_gsd.read_chunk(frame=0, name='configuration/box')
+        box = boxdim(*box_array[0:3])
+    psi = psi_order_delone(pos, box, nx=100, ny=100, rcut=1.3)
+    return psi
+    
+def compute_psi6_correlation_from_gsd(fpath, Nframes=1, frame_step=1, nxny=(100,100)):
+    nx, ny = nxny
+    cf_psi = np.zeros((ny, nx), dtype=complex)
+    for frame in range(0, Nframes, frame_step):    
+        with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
+            n_frames_total = f_gsd.nframes
+            if frame > n_frames_total:
+                print('frame {} beyond n_frames_total = {}'.format(frame, n_frames_total))
+            else:
+                #translate negative indices into positive domain:
+                abs_frame = frame -(frame//n_frames_total)*n_frames_total
+                pos = f_gsd.read_chunk(frame=abs_frame, name='particles/position')
+                box_array = f_gsd.read_chunk(frame=0, name='configuration/box')
+                box = boxdim(*box_array[0:3])
+                psi = psi_order(pos, box, nx=nx, ny=ny, rcut=1.3)
+                cf_psi += correlation_function(psi)
+    cf_psi /= min(Nframes, n_frames_total)
+    return cf_psi
+    
+def plot_delone_triangulation(fpath, frame=0, fig=None, ax=None):
+    with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
+        n_frames_total = f_gsd.nframes
+        if frame > n_frames_total:
+            raise ValueError('frames beyond n_frames_total')
+        #translate negative indices into positive domain:
+        abs_frame = frame -(frame//n_frames_total)*n_frames_total
+        pos = f_gsd.read_chunk(frame=abs_frame, name='particles/position')
+        box_array = f_gsd.read_chunk(frame=0, name='configuration/box')
+        box = boxdim(*box_array[0:3])
+
+    if ax==None or fig==None:
+        fig = plt.figure(figsize = figsize)
+        ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                             xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
+    xlim = (-0.5*box.Lx, 0.5*box.Lx)
+    ylim = (-0.5*box.Ly, 0.5*box.Ly)
+
+    virtual_pos, virtual_ind = create_virtual_layer(pos, box)
+    tri = Delaunay(virtual_pos[:, 0:2])
+    ax.triplot(virtual_pos[:,0], virtual_pos[:,1], tri.simplices.copy(), color='black')
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    return fig, ax
+    
+    
 def correlation_function(f):
     cf = 0*f
     nynx = cf.shape
