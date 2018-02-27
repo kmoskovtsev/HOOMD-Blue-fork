@@ -213,7 +213,7 @@ def F_s_ri(ri, mesh_x, mesh_y, eta):
     x_ri = mesh_x - ri[0]
     y_ri = mesh_y - ri[1]
     r_ri = r_from_ri(ri, mesh_x, mesh_y)
-    term1 = 1/(2*eta)*np.exp(-r_ri**2/4./eta**2)/r_ri**2
+    term1 = 1/(np.sqrt(np.pi)*eta)*np.exp(-r_ri**2/4./eta**2)/r_ri**2
     term2 = erfc(0.5*r_ri/eta)/r_ri**3
     return np.dstack(((term1 + term2)*x_ri, (term1 + term2)*y_ri))
 
