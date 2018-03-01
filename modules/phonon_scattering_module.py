@@ -128,6 +128,13 @@ def compute_bare_fkkp(fkkp_t, k_arr):
     fkkp_t_mid = 0.5*(fkkp_t + np.roll(fkkp_t, 1, axis= 2))
     fkkp_t_mid[:,:,0] = 0
     fkkp = np.sum(fkkp_t_mid, axis = 2)*dtheta*np.reshape(k_arr, (1,-1))
+    # Symmetrize fkkp artificially, because it is not symmetric due to small numerical errors
+    k_arr_col = np.reshape(k_arr, (-1,1))
+    k_arr_row = np.reshape(k_arr, (1,-1))
+    Omega_matrix = np.dot(1/k_arr_col, k_arr_row)
+    rhs = np.transpose(fkkp)*Omega_matrix
+    upper_ind = np.triu_indices(fkkp.shape[0])
+    fkkp[upper_ind] = rhs[upper_ind]
     return fkkp
 
 def compute_Yinv(fkkp_t, NY):
