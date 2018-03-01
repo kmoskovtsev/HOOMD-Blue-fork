@@ -363,6 +363,11 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
             h_accel.data[j].x = h_net_force.data[j].x*minv;
             h_accel.data[j].y = h_net_force.data[j].y*minv;
             h_accel.data[j].z = h_net_force.data[j].z*minv;
+            
+            // then, update the velocity
+            h_vel.data[j].x += Scalar(1.0/2.0)*h_accel.data[j].x*m_deltaT;
+            h_vel.data[j].y += Scalar(1.0/2.0)*h_accel.data[j].y*m_deltaT;
+            h_vel.data[j].z += Scalar(1.0/2.0)*h_accel.data[j].z*m_deltaT;
 
             //Elastic Scattering
             hoomd::detail::Saru saru(ptag, timestep, m_seed);
@@ -452,10 +457,6 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
                 }
             }
 
-        // then, update the velocity
-        h_vel.data[j].x += Scalar(1.0/2.0)*h_accel.data[j].x*m_deltaT;
-        h_vel.data[j].y += Scalar(1.0/2.0)*h_accel.data[j].y*m_deltaT;
-        h_vel.data[j].z += Scalar(1.0/2.0)*h_accel.data[j].z*m_deltaT;
 
         // limit the movement of the particles
         if (m_limit)
