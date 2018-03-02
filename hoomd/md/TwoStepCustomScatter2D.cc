@@ -166,9 +166,9 @@ void TwoStepCustomScatter2D::integrateStepOne(unsigned int timestep)
         if (m_zero_force)
             h_accel.data[j].x = h_accel.data[j].y = h_accel.data[j].z = 0.0;
 
-        Scalar dx = h_vel.data[j].x*m_deltaT + Scalar(1.0/2.0)*h_accel.data[j].x*m_deltaT*m_deltaT;
-        Scalar dy = h_vel.data[j].y*m_deltaT + Scalar(1.0/2.0)*h_accel.data[j].y*m_deltaT*m_deltaT;
-        Scalar dz = h_vel.data[j].z*m_deltaT + Scalar(1.0/2.0)*h_accel.data[j].z*m_deltaT*m_deltaT;
+        Scalar dx = h_vel.data[j].x*m_deltaT;
+        Scalar dy = h_vel.data[j].y*m_deltaT;
+        Scalar dz = h_vel.data[j].z*m_deltaT;
 
         // limit the movement of the particles
         if (m_limit)
@@ -186,9 +186,6 @@ void TwoStepCustomScatter2D::integrateStepOne(unsigned int timestep)
         h_pos.data[j].y += dy;
         h_pos.data[j].z += dz;
 
-        h_vel.data[j].x += Scalar(1.0/2.0)*h_accel.data[j].x*m_deltaT;
-        h_vel.data[j].y += Scalar(1.0/2.0)*h_accel.data[j].y*m_deltaT;
-        h_vel.data[j].z += Scalar(1.0/2.0)*h_accel.data[j].z*m_deltaT;
         }
 
     // particles may have been moved slightly outside the box by the above steps, wrap them back into place
@@ -364,10 +361,10 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
             h_accel.data[j].y = h_net_force.data[j].y*minv;
             h_accel.data[j].z = h_net_force.data[j].z*minv;
             
-            // then, update the velocity
-            h_vel.data[j].x += Scalar(1.0/2.0)*h_accel.data[j].x*m_deltaT;
-            h_vel.data[j].y += Scalar(1.0/2.0)*h_accel.data[j].y*m_deltaT;
-            h_vel.data[j].z += Scalar(1.0/2.0)*h_accel.data[j].z*m_deltaT;
+            // then, update the velocity by half-step
+            h_vel.data[j].x += Scalar(0.5)*h_accel.data[j].x*m_deltaT;
+            h_vel.data[j].y += Scalar(0.5)*h_accel.data[j].y*m_deltaT;
+            h_vel.data[j].z += Scalar(0.5)*h_accel.data[j].z*m_deltaT;
 
             //Elastic Scattering
             hoomd::detail::Saru saru(ptag, timestep, m_seed);
@@ -455,6 +452,10 @@ void TwoStepCustomScatter2D::integrateStepTwo(unsigned int timestep)
                     h_vel.data[j].y = vpx*fast::sin(phi) + vpy*fast::cos(phi);
                     }
                 }
+            //update the velocity by another half-step after scattering
+            h_vel.data[j].x += Scalar(0.5)*h_accel.data[j].x*m_deltaT;
+            h_vel.data[j].y += Scalar(0.5)*h_accel.data[j].y*m_deltaT;
+            h_vel.data[j].z += Scalar(0.5)*h_accel.data[j].z*m_deltaT;
             }
 
 
