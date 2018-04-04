@@ -2,7 +2,7 @@ from __future__ import division
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-    
+import scipy    
 
 unit_M = 1
 unit_D = 1
@@ -83,7 +83,8 @@ def w_theta(N_theta, T, k):
     #theta_arr = np.linspace(2*np.pi/N_theta, 2*np.pi*(1 - 1/N_theta), N_theta)
     theta_arr = np.linspace(0, 2*np.pi, N_theta)
     
-    prm = 1.06 #permittivity of helium
+    #prm = 1.057 #permittivity of helium
+    prm = 1.06
     m_e = 1
     hbar = 1.0545726e-27/(unit_E*1e7)/unit_t
     alpha = 0.37*1e-3/unit_E*unit_D**2 # 0.37 erg/cm^2
@@ -155,6 +156,71 @@ def scattering_parameters(T, k_min, k_max, N_k, N_W, N_theta):
     W_resampled, theta_resampled, W_cumul = compute_cumul_W(w_k_theta, w_k, N_W)
     return w_k, theta_resampled, W_cumul, vmin, vmax
 
+def tau_rec_many_e(T, Nq=1000):
+    """ Calculate \tau^-1, one over relaxation time, for many-electron correlated liquid
+    \param T temperature in hoomd units (K)
+    \param k electron wavevector in hoomd units (1/micron)
+    
+    return w(theta) and theta arrays, each of size N_theta
+    
+    Only polarization part of the interaction is taken. Pressing field leads to forward scattering, so we want to ignore it.
+    Dykman, M. I., et.al. Phys. Rev. B 55.24 (1997): 16249.
+    Equations (89)-(90)
+    """
+    #theta_arr = np.linspace(2*np.pi/N_theta, 2*np.pi*(1 - 1/N_theta), N_theta)
+    #theta_arr = np.linspace(0, 2*np.pi, N_theta)
+    
+    #prm = 1.057 #permittivity of helium
+    prm = 1.06
+    m_e = 1
+    hbar = 1.0545726e-27/(unit_E*1e7)/unit_t
+    alpha = 0.37*1e-3/unit_E*unit_D**2 # 0.37 erg/cm^2
+    Lambda_0 = 0.25*e_charge**2*(prm - 1)/(prm + 1)
+    lmbd = hbar**2/m_e/Lambda_0
+    q_arr = np.linspace(0.000001, 600, Nq)
+    
+    integrand = q_arr**4*(phi_x(0.5*q_arr*lmbd))**2*np.exp(-hbar**2*q_arr**2/8/m_e/T)
+    tau_rec = hbar**4/(16*alpha*m_e**2*lmbd**2*np.sqrt(2*np.pi*m_e*T))*scipy.integrate.simps(integrand, x=q_arr)
+    return tau_rec
+    
+def relaxation_tau_rec(k_arr, T, N_theta):
+    """
+    Inverse relaxation time for each k in k_arr in one-electron picture.
+    \param T temperature in hoomd units
+    \param N_theta number of theta-points
+    
+    return tau^-1(k_arr)
+    """
+    N_k = len(k_arr)
+    tau_rec = np.zeros(k_arr.shape) 
+    for i,k in enumerate(k_arr):
+        w_arr, theta_arr = w_theta(N_theta, T, k)
+        tau_rec[i] = np.sum(w_arr*(1 - np.cos(theta_arr)))*2*np.pi/N_theta
+    return tau_rec
+    
+def mu_many_e(T):
+    """ Mobility of correlated many-electron system
+    """
+    m_e = 1
+    tau_rec_me = tau_rec_many_e(T, Nq=5000)
+    mu_me = e_charge/tau_rec_me/m_e
+    return mu_me
+
+def mu_one_e(T):
+    """ Mobility of in a single-electron (nonintaracting) picture
+    """
+    Nk = 1000
+    N_theta = 400
+    hbar = 1.0545726e-27/(unit_E*1e7)/unit_t
+    k_arr = np.linspace(0.01, 400, Nk)
+    tau_rec = relaxation_tau_rec(k_arr, T, N_theta)
+    p_arr = hbar*k_arr
+    dp = p_arr[1] - p_arr[0]
+    integral = np.sum(p_arr**3/tau_rec*np.exp(-p_arr**2/(2*T)))*dp
+    mu = e_charge*integral/(2*T**2)
+    return mu
+    
+    
 def write_to_file(k_min, k_max, w_k, N_W, theta_resampled, path = ''):
     """ Write k_min, k_max, w_k, N_W, theta_resampled to a file for HOOMD custom_scatter integrator.
     
