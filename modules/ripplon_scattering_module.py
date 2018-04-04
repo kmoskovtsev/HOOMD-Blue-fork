@@ -13,7 +13,7 @@ initialized = False
 
 def __init__():
     """
-    Initialize units
+    Initialize module
     """
     pass
 
@@ -144,6 +144,8 @@ def compute_cumul_W(w_k_theta, w_k, N_W):
     return W_resampled, theta_resampled, W_cumul
 
 def scattering_parameters(T, k_min, k_max, N_k, N_W, N_theta):
+    """ Wrapper to calculate all ripplon scattering probability distributions
+    """
     if not initialized:
         raise RuntimeError("Units not initialized (use init to initialize)")
     m_e = 1
@@ -161,14 +163,14 @@ def tau_rec_many_e(T, Nq=1000):
     \param T temperature in hoomd units (K)
     \param k electron wavevector in hoomd units (1/micron)
     
-    return w(theta) and theta arrays, each of size N_theta
+    return 1/tau
     
     Only polarization part of the interaction is taken. Pressing field leads to forward scattering, so we want to ignore it.
     Dykman, M. I., et.al. Phys. Rev. B 55.24 (1997): 16249.
-    Equations (89)-(90)
+    Equation (38)
     """
-    #theta_arr = np.linspace(2*np.pi/N_theta, 2*np.pi*(1 - 1/N_theta), N_theta)
-    #theta_arr = np.linspace(0, 2*np.pi, N_theta)
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     
     #prm = 1.057 #permittivity of helium
     prm = 1.06
@@ -191,6 +193,8 @@ def relaxation_tau_rec(k_arr, T, N_theta):
     
     return tau^-1(k_arr)
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     N_k = len(k_arr)
     tau_rec = np.zeros(k_arr.shape) 
     for i,k in enumerate(k_arr):
@@ -201,14 +205,19 @@ def relaxation_tau_rec(k_arr, T, N_theta):
 def mu_many_e(T):
     """ Mobility of correlated many-electron system
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     m_e = 1
     tau_rec_me = tau_rec_many_e(T, Nq=5000)
+    # Drude formula
     mu_me = e_charge/tau_rec_me/m_e
     return mu_me
 
 def mu_one_e(T):
-    """ Mobility of in a single-electron (nonintaracting) picture
+    """ Mobility of in a single-electron (nonintaracting) picture, from Boltzmann equation
     """
+    if not initialized:
+        raise RuntimeError('RSM module not initialized')
     Nk = 1000
     N_theta = 400
     hbar = 1.0545726e-27/(unit_E*1e7)/unit_t
