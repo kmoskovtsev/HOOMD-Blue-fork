@@ -464,7 +464,8 @@ def pair_correlation(pos, box, n_bins = (100, 100)):
     return g
 
 def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
-    """ Calculate pair correlation function, averaged over all frames in a gsd file.
+    """ Calculate pair correlation function.
+        Averaged over frames in the range from frames[0] to frames[1]. Negative frames are counted from the end of time.
         \param filename: name of the gsd file
         \param n_bins: tuple of size 2, numbers of bins in x and y direction for correlation function, both even
         Return: array of shape n_bins, pair correlation function normalized to (N - 1). Zero of coordinate is in the middle
