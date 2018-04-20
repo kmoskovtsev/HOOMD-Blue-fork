@@ -506,23 +506,42 @@ def pair_correlation_from_gsd(filename, n_bins = (100, 100), frames =(0, -1)):
     return g
     
     
-def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interpolation = 'none', nbins=50, alpha=1, fig=None, ax=None, origin_marker=True):
-
+def plot_pair_correlation(g, box, figsize = (8,8), cmap = "plasma", interp = 'none',\
+                          nbins=50, alpha=1, fig=None, ax=None, origin_marker=True, minmax=None, imshow=False):
+    tickfont = 18
     if ax==None or fig==None:
         fig = plt.figure(figsize = figsize)
         ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                             xlim=(-0.6*box.Lx, 0.6*box.Lx), ylim=(-0.6*box.Ly, 0.6*box.Ly))
+                             xlim=(-0.5*box.Lx, 0.5*box.Lx), ylim=(-0.5*box.Ly, 0.5*box.Ly))
     x = np.linspace(-box.Lx/2, box.Lx/2, g.shape[0])
     y = np.linspace(-box.Ly/2, box.Ly/2, g.shape[1])
     X, Y = np.meshgrid(x, y)
-    levels = MaxNLocator(nbins=nbins).tick_values(g.min(), g.max())
-    cmap = plt.get_cmap(cmap)
-    norm = BoundaryNorm(levels, ncolors=cmap.N, clip=True)
-    cax = ax.pcolor(X, Y, np.transpose(g), cmap = cmap,\
-    alpha=alpha, norm=norm, edgecolor='none', antialiaseds=False)
+    if minmax == None:
+        levels = MaxNLocator(nbins=nbins).tick_values(g.min(), g.max())
+        ticks = [g.min(), g.max()]
+    else:
+        levels = MaxNLocator(nbins=nbins).tick_values(minmax[0], minmax[1])
+        ticks = minmax
+    cmapo = plt.get_cmap(cmap)
+    norm = BoundaryNorm(levels, ncolors=cmapo.N, clip=True)#
+    
+    #pc = ax.pcolor(X, Y, np.transpose(g), cmap = cmap,\
+    #alpha=alpha, norm=norm, edgecolor='none', antialiaseds=False)
+    if imshow:
+        pc = ax.imshow(np.flipud(np.transpose(g)), extent=[X.min(), X.max(), Y.min(), Y.max()], cmap=cmap,\
+                       alpha=alpha, interpolation=interp, norm=norm)
+    else:
+        pc = ax.pcolor(X, Y, np.transpose(g), cmap = cmapo,\
+        alpha=alpha, norm=norm, edgecolor=None, antialiaseds=False, linewidth=0)
+        pc.set_rasterized(True)
     if origin_marker:
         ax.scatter(0,0, c='r', marker = '+')
-    fig.colorbar(cax, ax=ax)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = fig.colorbar(pc, cax=cax, ax=ax, ticks=ticks)#, fraction=0.056, pad=0.04)
+    cbar.ax.tick_params(labelsize=tickfont)
+    cbar.ax.set_yticklabels(['{:.2f}'.format(ticks[0]), '{:.2f}'.format(ticks[1])])
+    
     return fig, ax, cax
     
     
