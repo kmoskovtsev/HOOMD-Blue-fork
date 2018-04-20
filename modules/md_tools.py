@@ -5,6 +5,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.colors import BoundaryNorm
 from matplotlib.ticker import MaxNLocator
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 from hoomd.data import boxdim
 from scipy.spatial import Delaunay
@@ -463,7 +464,7 @@ def pair_correlation(pos, box, n_bins = (100, 100)):
     g /= pos.shape[0]
     #Normalize to the particle density so that integral of g is (N - 1)/n_s
     n_s = 2/np.sqrt(3)
-    g *= nbins[0]*nbins[1]/box.Lx/box.Ly
+    g *= n_bins[0]*n_bins[1]/box.Lx/box.Ly
     g /= n_s 
     return g
 
@@ -709,7 +710,10 @@ def correlation_function(f):
     for j in range(-nynx[0]//2, nynx[0]//2):
         for i in range(-nynx[1]//2, nynx[1]//2):
             #print('i={}, j={}, coor_i={}, coor_j={}'.format(i,j, nynx[1]//2 + i, nynx[0]//2 + j))
-            cf[nynx[0]//2 + j,nynx[1]//2 + i] = np.mean(f*np.conj(np.roll(f, (-j, -i), axis=(0,1))))
+            f1 = np.roll(f, -j, axis=0)
+            f2 = np.roll(f1, -i, axis=1)
+            cf[nynx[0]//2 + j,nynx[1]//2 + i] = np.mean(f*np.conj(f2))
+            #cf[nynx[0]//2 + j,nynx[1]//2 + i] = np.mean(f*np.conj(np.roll(f, (-j, -i), axis=(0,1))))
             #print('cf={}'.format(cf[nynx[0]//2 + j,nynx[1]//2 + i]))
     return cf
     
