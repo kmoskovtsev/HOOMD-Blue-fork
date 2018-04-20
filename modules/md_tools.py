@@ -463,7 +463,7 @@ def pair_correlation(pos, box, n_bins = (100, 100)):
     #Normalize so that the sum over all pixels is N - 1
     g /= pos.shape[0]
     #Normalize to the particle density so that integral of g is (N - 1)/n_s
-    n_s = 2/np.sqrt(3)
+    n_s = pos.shape[0]/box.Lx/box.Ly
     g *= n_bins[0]*n_bins[1]/box.Lx/box.Ly
     g /= n_s 
     return g
