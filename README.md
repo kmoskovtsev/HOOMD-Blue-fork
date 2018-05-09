@@ -1,5 +1,8 @@
 # HOOMD-blue fork
-This is my fork of HOOMD-blue that includes 2D-table-potential forces (to do 2D Ewald summation), cos-modulated potential, and Gaussian noise in Langevin integrator. The code is still in testing, so it may be malfunctioning at the moment.
+This is my fork of HOOMD-blue that includes 2D-table-potential forces (to do 2D Ewald summation), CustomScatter2D integrator, cos-modulated potential, 
+and Gaussian noise in Langevin integrator. CustomScatter2D integrator allows to simulate scattering processes microscopically by changing particle velocities at random time moments according to any
+probability distribution. Both elastic and inelastic scattering can be simulated independently. CustomScatter2D is implemented only for CPU at the moment. 
+At some point, these modules will become available as plugins for HOOMD-Blue.
 
 
 HOOMD-blue is a general purpose particle simulation toolkit. It performs hard particle Monte Carlo simulations

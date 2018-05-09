@@ -413,6 +413,7 @@ def plot_positions(system=None, pos=None, box=None, figsize = (7, 7), gridon = T
                       facecolors='blue')
     if gridon:
         ax.grid()
+    ax.set_aspect('equal')
     return fig, ax
     
     
@@ -658,10 +659,10 @@ def psi6_order_from_gsd(fpath, frame=0):
     psi = psi_order_delone(pos, box, nx=100, ny=100, rcut=1.3)
     return psi
     
-def compute_psi6_correlation_from_gsd(fpath, Nframes=1, frame_step=1, nxny=(100,100)):
+def compute_psi6_correlation_from_gsd(fpath, Nframes=1, frame_step=1, nxny=(100,100), init_frame=0):
     nx, ny = nxny
     cf_psi = np.zeros((ny, nx), dtype=complex)
-    for frame in range(0, Nframes, frame_step):    
+    for frame in range(init_frame, init_frame + Nframes, frame_step):    
         with gsd.fl.GSDFile(fpath, 'rb') as f_gsd:
             n_frames_total = f_gsd.nframes
             if frame > n_frames_total:
