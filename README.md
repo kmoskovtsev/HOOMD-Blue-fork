@@ -4,6 +4,9 @@ and Gaussian noise in Langevin integrator. CustomScatter2D integrator allows to 
 probability distribution. Both elastic and inelastic scattering can be simulated independently. CustomScatter2D is implemented only for CPU at the moment. 
 At some point, these modules will become available as plugins for HOOMD-Blue.
 
+The scripts and Python modules to prepare 2D Ewald tables and scattering distribution tables for electrons on helium are found in
+ [Electrons-on-Helium-Scripts](https://github.com/kmoskovtsev/Electrons-on-Helium-Scripts) repository.
+
 
 HOOMD-blue is a general purpose particle simulation toolkit. It performs hard particle Monte Carlo simulations
 of a variety of shape classes, and molecular dynamics simulations of particles with a range of pair, bond, angle,
