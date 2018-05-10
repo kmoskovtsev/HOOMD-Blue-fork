@@ -7,7 +7,23 @@ At some point, these modules will become available as plugins for HOOMD-Blue.
 The scripts and Python modules to prepare 2D Ewald tables and scattering distribution tables for electrons on helium are found in
  [Electrons-on-Helium-Scripts](https://github.com/kmoskovtsev/Electrons-on-Helium-Scripts) repository.
 
+Before compiling this version of HOOMD on MSU HPCC cluster, issue
 
+`>module load GNU/4.9 CUDA/7.0 CMake/3.1.0 git/2.9.0 Python/2.7.2 NumPy/1.9.2 openblas/0.2.15` 
+
+An example compilation script (replace relevant paths):
+
+`cd ~/HOOMD-Blue-fork/build
+rm  -rf /mnt/home/username/HOOMD-Blue-fork/build/*
+rm -rf /mnt/home/username/hoomd-build/*
+export SOFTWARE_ROOT=/mnt/home/username/hoomd-build
+cmake /mnt/home/username/HOOMD-Blue-fork -DCMAKE_INSTALL_PREFIX=${SOFTWARE_ROOT}/lib/python -DENABLE_CUDA=ON
+make -j4
+make install`
+
+
+ 
+# Original HOOMD-Blue README
 HOOMD-blue is a general purpose particle simulation toolkit. It performs hard particle Monte Carlo simulations
 of a variety of shape classes, and molecular dynamics simulations of particles with a range of pair, bond, angle,
 and other potentials. HOOMD-blue runs fast on NVIDIA GPUs, and can scale across
