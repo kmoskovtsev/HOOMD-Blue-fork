@@ -13,19 +13,19 @@ Before compiling this version of HOOMD on MSU HPCC cluster, issue
 
 An example compilation script (replace relevant paths):
 
-`cd ~/HOOMD-Blue-fork/build
+`cd ~/HOOMD-Blue-fork/build`
 
-rm  -rf /mnt/home/username/HOOMD-Blue-fork/build/*
+`rm  -rf /mnt/home/username/HOOMD-Blue-fork/build/*`
 
-rm -rf /mnt/home/username/hoomd-build/*
+`rm -rf /mnt/home/username/hoomd-build/*`
 
-export SOFTWARE_ROOT=/mnt/home/username/hoomd-build
+`export SOFTWARE_ROOT=/mnt/home/username/hoomd-build`
 
-cmake /mnt/home/username/HOOMD-Blue-fork -DCMAKE_INSTALL_PREFIX=${SOFTWARE_ROOT}/lib/python -DENABLE_CUDA=ON
+`cmake /mnt/home/username/HOOMD-Blue-fork -DCMAKE_INSTALL_PREFIX=${SOFTWARE_ROOT}/lib/python -DENABLE_CUDA=ON`
 
-make -j4
+`make -j4`
 
-make install`
+`make install`
 
 
  
