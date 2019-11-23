@@ -2,6 +2,7 @@ from __future__ import division
 from scipy.special import kn
 import numpy as np
 import scipy
+import scipy.integrate
 import pickle
 import os
 import time
@@ -18,6 +19,7 @@ Lambda_0 = 1
 r_b = 1
 vs = 1
 rho = 1
+prm = 1
 initialized = False
 
 def __init__():
@@ -53,6 +55,7 @@ def init(unit_M_, unit_D_, unit_E_):
     
 
 def zmelement(q, Qz, r_b, z_max, zp_max, N_z=500):
+    # q, Qz are single value variables (not arrays)
     hz = z_max/(N_z - 1)
     hzp = zp_max/(N_z - 1)
     epz = hz/1000 #starting point for z-integration
@@ -248,4 +251,55 @@ def read_fkkp_t_from_file(fname):
     kmax = data_dict['kmax']
     print('Read successfully from {}'.format(fname))
     return fkkp_t, kmin, kmax
-            
+
+
+def tau_rec_many_e(T, Nq=100):
+    """ Calculate \tau^-1, one over relaxation time, for many-electron correlated liquid for phonon scattering
+    \param T temperature in hoomd units (K)
+    \param k electron wavevector in hoomd units (1/micron)
+    
+    return 1/tau
+    
+    """
+    if not initialized:
+        raise RuntimeError('PSM module not initialized')
+    
+    lmbd = hbar**2/m_e/Lambda_0
+    q_arr = np.linspace(0.0000001, 10000, Nq)
+    qz_arr = np.linspace(0.0000001, 10000, Nq)
+    integrand = np.zeros(qz_arr.shape)
+
+    for j, qz_j in enumerate(qz_arr):
+        integrand_j = np.zeros(q_arr.shape)
+        for i, q_i in enumerate(q_arr):
+            #print('i={}, j={}'.format(i,j))
+            zmel =  zmelement(q_i, qz_j, r_b, z_max = 5*r_b, zp_max = 10/q_i, N_z=50)
+            integrand_j[i] = q_i**5*np.sqrt(q_i**2 + qz_j**2)*zmel**2*\
+                    (xi_pm(q_i, qz_j, T, 1)*n_be(q_i, qz_j, T) + xi_pm(q_i, qz_j, T, -1)*(n_be(q_i,qz_j, T)+1))
+        integrand[j] = scipy.integrate.simps(integrand_j, x=q_arr)
+    const1 = hbar*Lambda_0**2/(8*np.pi**2*m_e*T*vs*rho)
+    tau_rec = const1*scipy.integrate.simps(integrand, x=qz_arr)
+    return tau_rec
+    
+def xi_pm(q,qz,T,s):
+    if s != 1 and s != -1:
+        raise ValueError('s must be 1 or -1 (sign)')
+    omega_Q = vs*np.sqrt(q**2 + qz**2)
+    expr = np.sqrt(np.pi*m_e/(2*T*q**2))*np.exp(-1./(2*m_e*T)*(0.5*q*hbar - s*m_e*omega_Q/q)**2)
+    return expr
+
+def n_be(q,qz,T):
+    # Boze-Einstein distribution
+    return 1/(np.exp(hbar*vs*np.sqrt(q**2 + qz**2)/T) - 1)
+
+def mu_many_e(T):
+    """ Mobility of correlated many-electron system
+    """
+    if not initialized:
+        raise RuntimeError('PSM module not initialized')
+    tau_rec_me = tau_rec_many_e(T, Nq=100)
+    # Drude formula
+    mu_me = e_charge/tau_rec_me/m_e
+    return mu_me
+
+ 
